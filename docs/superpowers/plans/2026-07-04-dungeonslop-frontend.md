@@ -450,6 +450,20 @@ Screens by `phase`: `CreateOrJoin` (enter code) → `Lobby` (roster, name, Knigh
 
 ---
 
+## Polish Backlog (post F-M1 playtest feedback)
+
+Not milestones — a running list of "fun and visibility" gaps identified while playing the F-M1 prototype live. Pick up opportunistically; each is small and independent.
+
+1. **Floating damage numbers + hit-flash** (highest priority — cheapest change, biggest feel payoff). Right now damage only shows via the health bar changing value, with no popup number, no flash on the model, no sound. Sketch: watch `unit.hp` deltas the same way `UnitActor` watches `unit.pos` (see its hop-animation pattern), spawn a short-lived billboarded text that rises and fades, and briefly flash the hit model's material color/emissive.
+2. **Affordability/cost clarity.** An unaffordable card is only distinguished by CSS dimming (`.dim`) — easy to miss at a glance. Consider a small shake or a tooltip explaining *why* it's disabled (not enough energy vs. no valid targets — the latter is now handled by the "No valid targets" message added after the card-UI fix).
+3. **Monster telegraphing.** Enemies silently resolve their whole phase at once with no preview of who's about to move/attack. Even a brief per-monster highlight (target tile or intended victim) before each monster's action resolves would let players plan instead of just reacting.
+4. **Phase/turn transition feedback.** Phase changes (player → monster → player, room clear, defeat) are currently a small corner text label only. A brief center-screen banner on transition (reusing the "ROOM CLEAR!"/"DEFEATED" treatment already in `GameScreen`) would make state changes easier to notice, especially in multiplayer where it might not be your turn.
+5. **Sound effects.** Card play, hit, hop-landing, room-clear fanfare — cheap to wire up (Web Audio or plain `<audio>`), outsized impact on "fun."
+6. **Camera doesn't follow the active unit.** In multiplayer especially, if you've panned away (drag-to-pan) the action can continue off-screen. Consider a gentle auto-recenter (or a "recenter" button) when the active unit changes.
+7. **Selection/target legibility on the board itself.** Highlight tinting (`legal-move`/`legal-attack` tile colors in `BoardScene`) is the only spatial feedback; a pulsing outline or ground ring on the *currently selected* unit (distinct from "active unit" cyan tint) would help in a crowded board.
+
+---
+
 ## Self-Review notes
 - **Standalone-first:** F0.1 + F1.1–F1.3 need no backend (fixture + inline type fallback); only F1.4 onward consume real `shared`/`server`.
 - **Presentational boundary:** `BoardScene`, `UnitModel`, `CardHand` take state + callbacks; only drivers (`useHotseatGame`/`useColyseusGame`) touch `shared`/network, so hotseat→multiplayer is one swap.
