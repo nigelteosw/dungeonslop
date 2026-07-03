@@ -1,10 +1,10 @@
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera } from '@react-three/drei';
-import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
 import type { GameState, Pos } from '../engine';
 import { keyOf } from '../engine';
 import { gridToWorld, boardCenter } from './gridToWorld';
 import { UnitModel } from './models/UnitModel';
+import { IsoCameraRig } from './IsoCameraRig';
 
 interface Props {
   state: GameState;
@@ -24,13 +24,9 @@ export function BoardScene({ state, activeId, highlightKeys, onTileClick }: Prop
 
   return (
     <Canvas style={{ position: 'absolute', inset: 0 }}>
-      {/* Fixed isometric: orthographic camera offset equally on X/Z, elevated -> XCOM 45deg look */}
-      <OrthographicCamera
-        makeDefault
-        position={[cx + 14, 18, cz + 14]}
-        zoom={34}
-        onUpdate={(c: ThreeOrthographicCamera) => c.lookAt(cx, 0, cz)}
-      />
+      {/* Isometric orbit camera: fixed elevation/distance, eases to 90deg steps on Q/E */}
+      <OrthographicCamera makeDefault zoom={34} />
+      <IsoCameraRig center={[cx, 0, cz]} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[10, 20, 6]} intensity={1.1} />
       {tiles.map((p) => {
