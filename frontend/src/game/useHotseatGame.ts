@@ -3,6 +3,7 @@ import {
   createRoom, applyMove, playCard, endTurn, legalMoves, cardTargets,
   runMonsterPhase, keyOf, type GameState, type Pos,
 } from '../engine';
+import type { GameDriver } from './driver';
 
 const rng = Math.random;
 const seed = [{ name: 'Knight', classId: 'knight' }, { name: 'Wizard', classId: 'wizard' }];
@@ -19,14 +20,14 @@ function tolerating(fn: (s: GameState) => GameState): (s: GameState) => GameStat
   };
 }
 
-export function useHotseatGame() {
+export function useHotseatGame(): GameDriver {
   const [state, setState] = useState<GameState>(() => createRoom(0, seed, rng));
   const activeId = state.order[state.activeIndex]!;
 
   return {
     state,
     activeId,
-    hand: state.units[activeId]?.hand ?? [],
+    myUnitId: activeId, // the device is passed around, so "you" are always whoever's active
     legalMoveKeys: new Set(legalMoves(state, activeId).map(keyOf)),
     cardTargetKeys: (cardId: string) => new Set(cardTargets(state, activeId, cardId).map(keyOf)),
     move: (to: Pos) => setState(tolerating((s) => applyMove(s, activeId, to))),
