@@ -3,8 +3,8 @@ import { OrthographicCamera } from '@react-three/drei';
 import type { GameState, Pos } from '../engine';
 import { keyOf } from '../engine';
 import { gridToWorld, boardCenter } from './gridToWorld';
-import { UnitModel } from './models/UnitModel';
 import { IsoCameraRig } from './IsoCameraRig';
+import { UnitActor } from './UnitActor';
 
 interface Props {
   state: GameState;
@@ -46,14 +46,9 @@ export function BoardScene({ state, activeId, highlightKeys, onTileClick }: Prop
           </mesh>
         );
       })}
-      {Object.values(state.units).map((u) => {
-        const [wx, , wz] = gridToWorld(u.pos);
-        return (
-          <group key={u.id} position={[wx, 0, wz]}>
-            <UnitModel unit={u} active={u.id === activeId} />
-          </group>
-        );
-      })}
+      {Object.values(state.units).map((u) => (
+        <UnitActor key={u.id} unit={u} active={u.id === activeId} />
+      ))}
     </Canvas>
   );
 }
