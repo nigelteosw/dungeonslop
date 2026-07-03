@@ -20,6 +20,7 @@ export function isBlocked(s: GameState, p: Pos): boolean {
 
 export function legalMoves(s: GameState, unitId: string): Pos[] {
   const unit = s.units[unitId]!;
+  if (unit.hasMoved) return [];
   const start = unit.pos;
   const dist = new Map<string, number>([[keyOf(start), 0]]);
   const queue: Pos[] = [start];

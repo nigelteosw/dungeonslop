@@ -17,6 +17,12 @@ test('legalMoves for range-4 knight excludes start, includes 4 east, excludes 5 
   expect(m).not.toContainEqual({ x: 6, y: 1 });
 });
 
+test('legalMoves is empty once the unit has already moved this turn', () => {
+  let s = createRoom(0, [{ name: 'A', classId: 'knight' }], rng);
+  s = { ...s, units: { ...s.units, p0: { ...s.units.p0!, hasMoved: true } } };
+  expect(legalMoves(s, 'p0')).toEqual([]);
+});
+
 test('lineOfSight blocked by a wall between two points', () => {
   const s = createRoom(0, [{ name: 'A', classId: 'knight' }], rng); // wall at (6,6)
   expect(lineOfSight(s, { x: 5, y: 6 }, { x: 8, y: 6 })).toBe(false);
