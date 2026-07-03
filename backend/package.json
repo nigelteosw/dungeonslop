@@ -1,0 +1,19 @@
+{
+  "name": "dungeonslop-backend",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
+    "dev": "bun run --cwd server dev",
+    "start": "bun run --cwd server start"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.5.0"
+  }
+}
