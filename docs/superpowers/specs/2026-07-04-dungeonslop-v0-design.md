@@ -8,7 +8,7 @@
 
 ## 1. Product summary
 
-Dungeonslop is a browser-based co-op tactical dungeon crawler with a fantasy/D&D theme (knights, wizards, dungeons). Friends open a link, join a room by code, pick a class, and clear a 3-room dungeon together on an **8×8 grid rendered as a 3D board seen from a fixed XCOM-style 45° isometric camera**.
+Dungeonslop is a browser-based co-op tactical dungeon crawler with a fantasy/D&D theme (knights, wizards, dungeons). Friends open a link, join a room by code, pick a class, and clear a 3-room dungeon together on an **16×16 grid rendered as a 3D board seen from a fixed XCOM-style 45° isometric camera**.
 
 Combat is a deliberate hybrid:
 - **XCOM tactics** for positioning — grid movement, obstacles, line up your party.
@@ -55,7 +55,7 @@ dungeonslop/
 **Core discipline — logic vs. visuals separation (unchanged, and now paying off):**
 - **All game rules live in `shared/` as pure, deterministic functions** (movement, card resolution, energy, draw/discard, monster AI, room-clear). Randomness (deck shuffles, loot) is injected as `rng: () => number` so tests are deterministic. Trivially unit-testable with no server or client.
 - **The `server/` is the sole authority.** The Colyseus room holds authoritative state and mutates it only via `shared/` functions. Clients never decide outcomes.
-- **The `client/` renders and sends intents only.** The 3D scene and card hand are *presentational*: a **driver** supplies `GameState` + action callbacks; the scene renders and emits tile/unit picks; the hand emits card plays. Swapping the driver (hotseat ↔ Colyseus) is the only change between single-device and multiplayer. **The render tech (r3f) is invisible to `shared`** — the board is just an 8×8 grid of data.
+- **The `client/` renders and sends intents only.** The 3D scene and card hand are *presentational*: a **driver** supplies `GameState` + action callbacks; the scene renders and emits tile/unit picks; the hand emits card plays. Swapping the driver (hotseat ↔ Colyseus) is the only change between single-device and multiplayer. **The render tech (r3f) is invisible to `shared`** — the board is just an 16×16 grid of data.
 
 **Data flow:**
 ```
@@ -102,7 +102,9 @@ Classes, cards, monsters, upgrades, equipment, and slop cards are **plain typed 
 
 **Round structure — seat-order queue:** P1's turn, P2's turn, … then a **monster phase** where each monster runs simple AI (approach nearest player; attack if adjacent, using its `attack` stat directly — monsters have no cards). Then the next round begins. This avoids DnD initiative edge cases.
 
-**Board:** 8×8 grid with walls/obstacles and an exit tile, rendered in 3D isometric. Interaction: click a tile to move there (if legal) or select a card then click a highlighted target.
+**Board:** 16×16 grid with walls/obstacles and an exit tile, rendered in 3D isometric. Interaction: click a tile to move there (if legal) or select a card then click a highlighted target.
+
+**Scaled for the larger board:** movement and ranges are tuned for 16×16 so the space reads as tactical, not glacial — starting `moveRange` ≈ 4–5, ranged/line card `range` ≈ 6–9. Exact values are tuning done during authoring. Rooms place the party and monsters far enough apart that positioning and approach matter.
 
 **Room clear:** all monsters defeated → exit opens → the party advances.
 
@@ -111,7 +113,7 @@ Classes, cards, monsters, upgrades, equipment, and slop cards are **plain typed 
 ## 6. Rendering (3D isometric)
 
 - **Tech:** `react-three-fiber` + `three` + `@react-three/drei`. An **orthographic camera** at a fixed isometric angle (~45° azimuth, ~35° elevation) for the XCOM "angled from above" look. No free camera in v0 (optional gentle rotate/zoom later).
-- **Board:** 3D floor tiles (thin boxes) on an 8×8 grid; walls/obstacles are extruded cube blocks; the exit tile is a lit marker. Legal-move tiles and card targets are highlighted by tinting/emissive.
+- **Board:** 3D floor tiles (thin boxes) on an 16×16 grid; walls/obstacles are extruded cube blocks; the exit tile is a lit marker. Legal-move tiles and card targets are highlighted by tinting/emissive.
 - **Characters — simple low-poly models built from Three.js primitives in code (no external assets):**
   - **Knight:** blocky armored torso, box limbs, a helm (box/cone), a small sword. Metallic-grey material, team-color trim.
   - **Wizard:** robed body (tapered cylinder/cone), pointed hat (cone), a staff. Robe in team color.
