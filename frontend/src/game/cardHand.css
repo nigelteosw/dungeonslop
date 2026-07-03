@@ -1,0 +1,56 @@
+.hand-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  pointer-events: none;
+}
+.hand-bar > * { pointer-events: auto; }
+.energy { align-self: center; font: 700 18px system-ui; color: #fde68a; }
+.fan { display: flex; align-items: flex-end; }
+.card {
+  width: 96px;
+  height: 132px;
+  margin: 0 -8px;
+  border: 2px solid #334155;
+  border-radius: 10px;
+  background: linear-gradient(#1f2937, #111827);
+  color: #e5e7eb;
+  cursor: pointer;
+  transform-origin: bottom center;
+  transition: transform .12s;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+.card.sel { border-color: #22d3ee; box-shadow: 0 0 12px #22d3ee; }
+.card.dim { opacity: .45; cursor: not-allowed; }
+.card .cost {
+  align-self: flex-start;
+  background: #fbbf24;
+  color: #111;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.card .name { margin-top: 8px; font-weight: 700; font-size: 13px; }
+.card .meta { margin-top: auto; font-size: 10px; color: #94a3b8; }
+.end-turn {
+  align-self: center;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 0;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
