@@ -74,8 +74,15 @@ Illegal / out-of-turn / non-owner intents are rejected server-side and ignored.
 Classes, cards, monsters, upgrades, equipment, and slop cards are **plain typed data** in `shared/content/`, validated by Zod at load time. Adding content later is editing a data file, not writing code.
 
 - **Class:** `{ id, name, maxHp, moveRange, attack, maxEnergy, startingDeck: string[] }`
-- **Card:** `{ id, name, cost, kind: 'melee'|'ranged'|'heal'|'block', power, range? }`
-  - `melee` = adjacent enemy; `ranged` = enemy within `range`; `heal` = ally; `block` = self (temporary shield)
+- **Card:** `{ id, name, cost, effect: 'damage'|'heal'|'block', shape: 'melee'|'ranged'|'line'|'self', power, range? }`
+  - **effect** = what it does: `damage` (deal `attack + power`), `heal` (restore `power` to an ally), `block` (temporary shield of `power` on self).
+  - **shape** = how you target it, resolved against the grid + obstacles:
+    - `melee` — an adjacent enemy.
+    - `ranged` — a single enemy within `range` tiles **with clear line of sight** (a hard obstacle between blocks it).
+    - `line` — pick an orthogonal direction; the attack travels in a straight line up to `range`, **pierces enemies in its path, and stops at the first hard obstacle** (wall). (e.g. the "AK-47 Vulcan".)
+    - `self` — no target (block/buff on the caster).
+  - **Tone:** cards can be absurd — modern/joke weapons in a fantasy dungeon are on-theme for *slop*. Flavor lives entirely in card data.
+  - **Extensible by design:** `shape` is data, resolved by a single `cardTargets(state, unitId, cardId)` function + a `resolveCard` switch. Adding `blast`, `cone`, etc. later is new data + one branch — no structural change.
 - **Monster:** `{ id, name, maxHp, moveRange, attack, lootTable }` (monsters use direct AI attacks, not cards)
 - **Upgrade:** `{ id, name, description, effect }` (applied immediately on pick; effects include stat buffs and "add a card to your deck")
 - **Equipment:** `{ id, name, slot: weapon|armor|trinket, effect }` (drops from monsters)
@@ -89,7 +96,9 @@ Classes, cards, monsters, upgrades, equipment, and slop cards are **plain typed 
 
 **Turn flow (active player):** start of turn → refill energy, reset the move, **draw up to hand size (5)** from the deck (reshuffle discard into deck when empty, seeded rng) → the player moves (optional) and plays cards until out of energy/targets → **end turn** → the card hand goes to discard.
 
-**Cards** resolve by kind: `melee`/`ranged` deal `attack + power` to a valid target; `heal` restores hp to an ally; `block` grants a temporary shield. Playing a card pays its `cost` in energy and moves it hand→discard.
+**Playing a card:** select the card, then pick a target tile on the grid. Legality is computed by `cardTargets(state, unitId, cardId)`, which returns the set of valid tiles for the card's `shape` (adjacency for `melee`; range + line-of-sight for `ranged`; the four orthogonal directions for `line`; none for `self`). `resolveCard` then applies the `effect`: `damage` deals `attack + power` to each affected enemy (a `line` card hits every enemy along its path until a wall stops it), `heal` restores `power` to an ally, `block` shields the caster. Playing a card pays its `cost` in energy and moves it hand→discard.
+
+**Hard obstacles (walls)** block three things: movement, line-of-sight for `ranged` cards, and the path of `line` cards. Shared helpers `lineOfSight(state, from, to)` and `traceLine(state, from, dir, range)` encapsulate this so every card shape uses the same obstacle rules.
 
 **Round structure — seat-order queue:** P1's turn, P2's turn, … then a **monster phase** where each monster runs simple AI (approach nearest player; attack if adjacent, using its `attack` stat directly — monsters have no cards). Then the next round begins. This avoids DnD initiative edge cases.
 
