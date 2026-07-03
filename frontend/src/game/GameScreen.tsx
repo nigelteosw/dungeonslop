@@ -36,6 +36,11 @@ export function GameScreen({ driver: g }: Props) {
         {!isMyTurn && !done && ' · waiting for their turn...'}
         {me && ` · You: ${me.name} HP ${me.hp}/${me.maxHp}`}
       </div>
+      {isMyTurn && selectedCardId && highlightKeys.size === 0 && (
+        <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', font: '14px monospace', color: '#f87171' }}>
+          No valid targets for that card
+        </div>
+      )}
       <CardHand
         hand={me?.hand ?? []}
         energy={me?.energy ?? 0}

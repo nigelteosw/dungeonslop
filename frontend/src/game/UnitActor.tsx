@@ -5,6 +5,7 @@ import type { Unit } from '../engine';
 import { keyOf } from '../engine';
 import { gridToWorld } from './gridToWorld';
 import { UnitModel } from './models/UnitModel';
+import { HealthBar } from './HealthBar';
 
 const HOP_DURATION = 0.35; // seconds
 const HOP_HEIGHT = 0.6;
@@ -56,6 +57,7 @@ export function UnitActor({ unit, active }: Props) {
   return (
     <group ref={groupRef} position={fromRef.current}>
       <UnitModel unit={unit} active={active} />
+      <HealthBar hp={unit.hp} maxHp={unit.maxHp} />
     </group>
   );
 }
