@@ -4,6 +4,7 @@ import type { OrthographicCamera as ThreeOrthographicCamera } from 'three';
 import type { GameState, Pos } from '../engine';
 import { keyOf } from '../engine';
 import { gridToWorld, boardCenter } from './gridToWorld';
+import { UnitModel } from './models/UnitModel';
 
 interface Props {
   state: GameState;
@@ -52,10 +53,9 @@ export function BoardScene({ state, activeId, highlightKeys, onTileClick }: Prop
       {Object.values(state.units).map((u) => {
         const [wx, , wz] = gridToWorld(u.pos);
         return (
-          <mesh key={u.id} position={[wx, 0.6, wz]}>
-            <boxGeometry args={[0.5, 1, 0.5]} />
-            <meshStandardMaterial color={u.team === 'player' ? (u.id === activeId ? '#22d3ee' : '#3b82f6') : '#ef4444'} />
-          </mesh>
+          <group key={u.id} position={[wx, 0, wz]}>
+            <UnitModel unit={u} active={u.id === activeId} />
+          </group>
         );
       })}
     </Canvas>
