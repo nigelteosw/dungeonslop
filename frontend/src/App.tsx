@@ -1,28 +1,11 @@
-import { GameScreen } from './game/GameScreen';
 import { LobbyScreen } from './game/LobbyScreen';
+import { ShipScreen } from './game/ShipScreen';
 import { useDungeonRoom } from './net/useDungeonRoom';
 
 export function App() {
-  const net = useDungeonRoom();
-
-  if (net.status === 'in-game' && net.driver) {
-    return <GameScreen driver={net.driver} />;
+  const room = useDungeonRoom();
+  if (room.status === 'in-game' && room.shipState) {
+    return <ShipScreen state={room.shipState} myCrewId={room.myCrewId} mySessionId={room.mySessionId} players={room.players} error={room.error} onCommand={room.sendCommand} onVote={room.castVote} />;
   }
-
-  return (
-    <LobbyScreen
-      status={net.status}
-      error={net.error}
-      roomCode={net.roomCode}
-      mySessionId={net.mySessionId}
-      players={net.players}
-      isHost={net.isHost}
-      onCreate={net.create}
-      onJoin={net.join}
-      onSetName={net.setName}
-      onSetClass={net.setClass}
-      onToggleReady={net.toggleReady}
-      onStart={net.start}
-    />
-  );
+  return <LobbyScreen status={room.status} error={room.error} roomCode={room.roomCode} mySessionId={room.mySessionId} players={room.players} isHost={room.isHost} onCreate={room.create} onJoin={room.join} onSetName={room.setName} onSetRole={room.setRole} onToggleReady={room.toggleReady} onStart={room.start} />;
 }

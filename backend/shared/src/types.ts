@@ -1,77 +1,122 @@
-export interface Pos {
-  x: number;
-  y: number;
-}
-
-export type Team = "player" | "monster";
-
-export interface EquipmentSlots {
-  weapon?: string;
-  armor?: string;
-  trinket?: string;
-}
-
-export interface Unit {
-  id: string;
-  team: Team;
-  name: string;
-  defId: string;
-  pos: Pos;
-  hp: number;
-  maxHp: number;
-  moveRange: number;
-  attack: number;
-  energy: number;
-  maxEnergy: number;
-  block: number;
-  hasMoved: boolean;
-  deck: string[];
-  hand: string[];
-  discard: string[];
-  inventory?: string[];
-  equipment?: EquipmentSlots;
-}
-
-export interface Board {
-  width: number;
-  height: number;
-  walls: Pos[];
-  exit: Pos;
-}
-
-export type Phase =
+export type RunStatus =
   | "lobby"
-  | "player"
-  | "monster"
-  | "slop"
-  | "reward"
-  | "roomClear"
+  | "mapVote"
+  | "eventVote"
+  | "encounter"
+  | "upgradeVote"
+  | "layoutVote"
+  | "victory"
   | "defeat";
 
-export interface RoomModifiers {
-  moveRangeDelta?: number;
-  monsterHpDelta?: number;
-  energyDelta?: number;
-  losRangeDelta?: number;
+export type CrewRole = "pilot" | "engineer" | "gunner" | "medic";
+export type SystemId = "helm" | "reactor" | "weapons" | "shields" | "oxygen";
+
+export interface ShipDoor {
+  id: string;
+  a: string;
+  b: string;
+  open: boolean;
+  locked: boolean;
 }
 
-export interface GameState {
-  board: Board;
-  units: Record<string, Unit>;
-  order: string[];
-  activeIndex: number;
-  phase: Phase;
-  roomIndex: number;
-  modifiers?: RoomModifiers;
+export interface ShipSystemState {
+  id: SystemId;
+  roomId: string;
+  health: number;
+  maxHealth: number;
+  power: number;
+  maxPower: number;
+  operatorCrewId?: string;
 }
 
-export const HAND_SIZE = 5;
+export interface ShipRoomState {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  oxygen: number;
+  fire: number;
+  breached: boolean;
+}
 
-export type Dir = { x: -1 | 0 | 1; y: -1 | 0 | 1 };
+export interface ShipState {
+  layoutId: string;
+  hull: number;
+  maxHull: number;
+  shields: number;
+  maxShields: number;
+  scrap: number;
+  reactorCapacity: number;
+  rooms: Record<string, ShipRoomState>;
+  doors: Record<string, ShipDoor>;
+  systems: Record<SystemId, ShipSystemState>;
+}
 
-export const ORTHO: readonly Dir[] = [
-  { x: 1, y: 0 },
-  { x: -1, y: 0 },
-  { x: 0, y: 1 },
-  { x: 0, y: -1 },
-] as const;
+export interface CrewState {
+  id: string;
+  ownerId: string;
+  name: string;
+  role: CrewRole;
+  roomId: string;
+  deckX: number;
+  deckY: number;
+  health: number;
+  maxHealth: number;
+  incapacitated: boolean;
+  bleedoutTicks: number;
+  abilityCooldownTicks: number;
+  carryingItemId?: string;
+}
+
+export interface BoarderState {
+  id: string;
+  roomId: string;
+  health: number;
+  targetRoomId?: string;
+}
+
+export interface EnemyState {
+  id: string;
+  hull: number;
+  maxHull: number;
+  shields: number;
+  weaponChargeTicks: number;
+  weaponChargeMaxTicks: number;
+}
+
+export interface VoteState {
+  kind: "map" | "event" | "upgrade" | "layout";
+  options: string[];
+  votes: Record<string, string>;
+  deadlineTick: number;
+}
+
+export interface RunState {
+  seed: string;
+  status: RunStatus;
+  tick: number;
+  sectorIndex: number;
+  nodeIndex: number;
+  currentNodeId?: string;
+  captainSeat: number;
+  ship: ShipState;
+  crew: Record<string, CrewState>;
+  boarders: Record<string, BoarderState>;
+  enemy?: EnemyState;
+  vote?: VoteState;
+  objectiveText?: string;
+  slopEffectId?: string;
+  installedUpgrades: string[];
+}
+
+export type ShipCommand =
+  | { kind: "move"; crewId: string; roomId: string }
+  | { kind: "moveVector"; crewId: string; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
+  | { kind: "operate"; crewId: string; systemId: SystemId }
+  | { kind: "repair"; crewId: string; systemId: SystemId }
+  | { kind: "extinguish"; crewId: string }
+  | { kind: "sealBreach"; crewId: string }
+  | { kind: "attackBoarder"; crewId: string; boarderId: string }
+  | { kind: "useAbility"; crewId: string }
+  | { kind: "revive"; crewId: string; targetCrewId: string };

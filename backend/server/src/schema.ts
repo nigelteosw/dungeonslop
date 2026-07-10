@@ -1,135 +1,175 @@
 import { ArraySchema, MapSchema, Schema, type } from "@colyseus/schema";
-import type { Board, GameState, Phase, Pos, Unit } from "shared";
+import type { BoarderState, CrewState, RunState, ShipDoor, ShipRoomState, ShipSystemState } from "shared";
 import type { LobbyPlayer, SessionSnapshot } from "./session";
-
-export class PosSchema extends Schema implements Pos {
-  @type("number") x = 0;
-  @type("number") y = 0;
-
-  constructor(pos?: Pos) {
-    super();
-    if (pos) {
-      this.x = pos.x;
-      this.y = pos.y;
-    }
-  }
-}
-
-export class EquipmentSchema extends Schema {
-  @type("string") weapon = "";
-  @type("string") armor = "";
-  @type("string") trinket = "";
-}
-
-export class UnitSchema extends Schema {
-  @type("string") id = "";
-  @type("string") team = "";
-  @type("string") name = "";
-  @type("string") defId = "";
-  @type(PosSchema) pos = new PosSchema();
-  @type("number") hp = 0;
-  @type("number") maxHp = 0;
-  @type("number") moveRange = 0;
-  @type("number") attack = 0;
-  @type("number") energy = 0;
-  @type("number") maxEnergy = 0;
-  @type("number") block = 0;
-  @type("boolean") hasMoved = false;
-  @type(["string"]) deck = new ArraySchema<string>();
-  @type(["string"]) hand = new ArraySchema<string>();
-  @type(["string"]) discard = new ArraySchema<string>();
-  @type(["string"]) inventory = new ArraySchema<string>();
-  @type(EquipmentSchema) equipment = new EquipmentSchema();
-
-  constructor(unit?: Unit) {
-    super();
-    if (!unit) return;
-    this.id = unit.id;
-    this.team = unit.team;
-    this.name = unit.name;
-    this.defId = unit.defId;
-    this.pos = new PosSchema(unit.pos);
-    this.hp = unit.hp;
-    this.maxHp = unit.maxHp;
-    this.moveRange = unit.moveRange;
-    this.attack = unit.attack;
-    this.energy = unit.energy;
-    this.maxEnergy = unit.maxEnergy;
-    this.block = unit.block;
-    this.hasMoved = unit.hasMoved;
-    this.deck.push(...unit.deck);
-    this.hand.push(...unit.hand);
-    this.discard.push(...unit.discard);
-    this.inventory.push(...(unit.inventory ?? []));
-    this.equipment.weapon = unit.equipment?.weapon ?? "";
-    this.equipment.armor = unit.equipment?.armor ?? "";
-    this.equipment.trinket = unit.equipment?.trinket ?? "";
-  }
-}
-
-export class BoardSchema extends Schema {
-  @type("number") width = 16;
-  @type("number") height = 16;
-  @type([PosSchema]) walls = new ArraySchema<PosSchema>();
-  @type(PosSchema) exit = new PosSchema();
-
-  constructor(board?: Board) {
-    super();
-    if (!board) return;
-    this.width = board.width;
-    this.height = board.height;
-    this.walls.push(...board.walls.map((p) => new PosSchema(p)));
-    this.exit = new PosSchema(board.exit);
-  }
-}
+import { projectShipSnapshot } from "./snapshot";
 
 export class PlayerSchema extends Schema {
   @type("string") sessionId = "";
   @type("string") name = "";
-  @type("string") classId = "";
+  @type("string") role = "";
   @type("boolean") ready = false;
   @type("boolean") host = false;
 
   constructor(player?: LobbyPlayer) {
     super();
-    if (!player) return;
-    this.sessionId = player.sessionId;
-    this.name = player.name;
-    this.classId = player.classId;
-    this.ready = player.ready;
-    this.host = player.host;
+    if (player) Object.assign(this, player);
+  }
+}
+
+export class CrewSchema extends Schema {
+  @type("string") id = "";
+  @type("string") ownerId = "";
+  @type("string") name = "";
+  @type("string") role = "";
+  @type("string") roomId = "";
+  @type("number") deckX = 0;
+  @type("number") deckY = 0;
+  @type("number") health = 0;
+  @type("number") maxHealth = 0;
+  @type("boolean") incapacitated = false;
+  @type("number") bleedoutTicks = 0;
+  @type("number") abilityCooldownTicks = 0;
+
+  constructor(crew?: CrewState) {
+    super();
+    if (crew) Object.assign(this, crew);
+  }
+}
+
+export class ShipRoomSchema extends Schema {
+  @type("string") id = "";
+  @type("number") x = 0;
+  @type("number") y = 0;
+  @type("number") w = 0;
+  @type("number") h = 0;
+  @type("number") oxygen = 100;
+  @type("number") fire = 0;
+  @type("boolean") breached = false;
+
+  constructor(room?: ShipRoomState) {
+    super();
+    if (room) Object.assign(this, room);
+  }
+}
+
+export class ShipDoorSchema extends Schema {
+  @type("string") id = "";
+  @type("string") a = "";
+  @type("string") b = "";
+  @type("boolean") open = true;
+  @type("boolean") locked = false;
+
+  constructor(door?: ShipDoor) {
+    super();
+    if (door) Object.assign(this, door);
+  }
+}
+
+export class ShipSystemSchema extends Schema {
+  @type("string") id = "";
+  @type("string") roomId = "";
+  @type("number") health = 0;
+  @type("number") maxHealth = 0;
+  @type("number") power = 0;
+  @type("number") maxPower = 0;
+  @type("string") operatorCrewId = "";
+
+  constructor(system?: ShipSystemState) {
+    super();
+    if (!system) return;
+    Object.assign(this, system);
+    this.operatorCrewId = system.operatorCrewId ?? "";
+  }
+}
+
+export class BoarderSchema extends Schema {
+  @type("string") id = "";
+  @type("string") roomId = "";
+  @type("number") health = 0;
+  @type("string") targetRoomId = "";
+
+  constructor(boarder?: BoarderState) {
+    super();
+    if (!boarder) return;
+    Object.assign(this, boarder);
+    this.targetRoomId = boarder.targetRoomId ?? "";
   }
 }
 
 export class DungeonState extends Schema {
-  @type("string") phase: Phase | "lobby" = "lobby";
+  @type("string") status = "lobby";
   @type([PlayerSchema]) players = new ArraySchema<PlayerSchema>();
-  @type(BoardSchema) board = new BoardSchema();
-  @type({ map: UnitSchema }) units = new MapSchema<UnitSchema>();
-  @type(["string"]) order = new ArraySchema<string>();
-  @type("number") activeIndex = 0;
-  @type("number") roomIndex = 0;
-  @type("string") currentSlopCardId = "";
-  @type(["string"]) rewardOptions = new ArraySchema<string>();
+  @type({ map: CrewSchema }) crew = new MapSchema<CrewSchema>();
+  @type({ map: ShipRoomSchema }) shipRooms = new MapSchema<ShipRoomSchema>();
+  @type({ map: ShipDoorSchema }) shipDoors = new MapSchema<ShipDoorSchema>();
+  @type({ map: ShipSystemSchema }) shipSystems = new MapSchema<ShipSystemSchema>();
+  @type({ map: BoarderSchema }) boarders = new MapSchema<BoarderSchema>();
+  @type("number") tick = 0;
+  @type("number") sectorIndex = 0;
+  @type("number") nodeIndex = 0;
+  @type("number") captainSeat = 0;
+  @type("number") hull = 0;
+  @type("number") maxHull = 0;
+  @type("number") shields = 0;
+  @type("number") maxShields = 0;
+  @type("number") scrap = 0;
+  @type("number") reactorCapacity = 0;
+  @type("string") shipLayoutId = "balanced";
+  @type("string") objectiveText = "";
+  @type("number") enemyHull = 0;
+  @type("number") enemyMaxHull = 0;
+  @type("number") enemyShields = 0;
+  @type("number") enemyWeaponChargeTicks = 0;
+  @type("number") enemyWeaponChargeMaxTicks = 0;
+  @type("string") slopEffectId = "";
+  @type("string") voteKind = "";
+  @type(["string"]) voteOptions = new ArraySchema<string>();
+  @type({ map: "string" }) votes = new MapSchema<string>();
+  @type("number") voteDeadlineTick = 0;
+  @type(["string"]) installedUpgrades = new ArraySchema<string>();
 
   applySnapshot(snapshot: SessionSnapshot): void {
-    this.phase = snapshot.phase;
+    this.status = snapshot.status;
     this.players.clear();
-    this.players.push(...snapshot.players.map((p) => new PlayerSchema(p)));
-    this.rewardOptions.clear();
-    this.rewardOptions.push(...snapshot.rewardOptions);
-    this.currentSlopCardId = snapshot.currentSlopCardId ?? "";
-
-    const game: GameState | undefined = snapshot.game;
-    this.units.clear();
-    this.order.clear();
-    if (!game) return;
-
-    this.phase = game.phase;
-    this.board = new BoardSchema(game.board);
-    for (const unit of Object.values(game.units)) this.units.set(unit.id, new UnitSchema(unit));
-    this.order.push(...game.order);
-    this.activeIndex = game.activeIndex;
-    this.roomIndex = game.roomIndex;
+    this.players.push(...snapshot.players.map((player) => new PlayerSchema(player)));
+    this.crew.clear();
+    this.shipRooms.clear();
+    this.shipDoors.clear();
+    this.shipSystems.clear();
+    this.boarders.clear();
+    this.voteOptions.clear();
+    this.votes.clear();
+    this.installedUpgrades.clear();
+    if (!snapshot.run) return;
+    const run: RunState = snapshot.run;
+    const shipSnapshot = projectShipSnapshot(run);
+    this.tick = run.tick;
+    this.sectorIndex = run.sectorIndex;
+    this.nodeIndex = run.nodeIndex;
+    this.captainSeat = run.captainSeat;
+    this.hull = run.ship.hull;
+    this.maxHull = run.ship.maxHull;
+    this.shields = run.ship.shields;
+    this.maxShields = run.ship.maxShields;
+    this.scrap = run.ship.scrap;
+    this.reactorCapacity = run.ship.reactorCapacity;
+    this.shipLayoutId = run.ship.layoutId;
+    this.objectiveText = run.objectiveText ?? "";
+    this.enemyHull = run.enemy?.hull ?? 0;
+    this.enemyMaxHull = run.enemy?.maxHull ?? 0;
+    this.enemyShields = run.enemy?.shields ?? 0;
+    this.enemyWeaponChargeTicks = run.enemy?.weaponChargeTicks ?? 0;
+    this.enemyWeaponChargeMaxTicks = run.enemy?.weaponChargeMaxTicks ?? 0;
+    this.slopEffectId = run.slopEffectId ?? "";
+    this.voteKind = run.vote?.kind ?? "";
+    this.voteOptions.push(...(run.vote?.options ?? []));
+    for (const [ownerId, option] of Object.entries(run.vote?.votes ?? {})) this.votes.set(ownerId, option);
+    this.voteDeadlineTick = run.vote?.deadlineTick ?? 0;
+    this.installedUpgrades.push(...run.installedUpgrades);
+    for (const crew of Object.values(run.crew)) this.crew.set(crew.id, new CrewSchema(crew));
+    for (const room of shipSnapshot.rooms) this.shipRooms.set(room.id, new ShipRoomSchema(room));
+    for (const door of shipSnapshot.doors) this.shipDoors.set(door.id, new ShipDoorSchema(door));
+    for (const system of Object.values(run.ship.systems)) this.shipSystems.set(system.id, new ShipSystemSchema(system));
+    for (const boarder of Object.values(run.boarders)) this.boarders.set(boarder.id, new BoarderSchema(boarder));
   }
 }

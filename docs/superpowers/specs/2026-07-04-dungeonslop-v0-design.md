@@ -1,152 +1,248 @@
-# Dungeonslop v0 — Design
+# Dungeonslop v0 — Multiplayer Ship Design
 
-**Status:** in review (design revised for 3D + card system)
-**Date:** 2026-07-04
-**Goal:** A genuinely playable online co-op tactical dungeon run that 2–4 friends can play together ASAP, with a fantasy/D&D identity: a 3D XCOM-style board and Slay-the-Spire ability cards. Fun over content. Keep everything not on the critical path lean.
+**Status:** approved direction; replaces the tactical dungeon-board design
+**Revised:** 2026-07-10
+**Goal:** Make a replayable 2–4 player browser game in which friends each control one crew member aboard the same failing ship, survive a branching run, and vote on major ship decisions.
 
----
+## 1. Product promise
 
-## 1. Product summary
+Dungeonslop is ship friendslop: a multiplayer FTL-like run with individually controlled crew.
 
-Dungeonslop is a browser-based co-op tactical dungeon crawler with a fantasy/D&D theme (knights, wizards, dungeons). Friends open a link, join a room by code, pick a class, and clear a 3-room dungeon together on an **16×16 grid rendered as a 3D board seen from a fixed XCOM-style 45° isometric camera**.
+Each player moves one character around a shared vessel and operates stations, repairs systems, fights boarders, carries items, and responds to emergencies in real time. Between encounters the crew votes on routes, events, purchases, and ship upgrades. The party wins or loses together.
 
-Combat is a deliberate hybrid:
-- **XCOM tactics** for positioning — grid movement, obstacles, line up your party.
-- **Slay-the-Spire cards** for actions — each class's attacks and abilities are a **hand of cards** you draw and play, gated by **energy**.
+The fun should come from human coordination under pressure:
 
-Between rooms, a **Slop Card** injects a run-wide twist — this chaos is the game's identity. Players grow stronger via post-room **upgrade** picks and **equipment** that drops from monsters.
+- several urgent problems happening at once;
+- players abandoning one responsibility to solve another;
+- incomplete or role-specific information;
+- consequential group votes;
+- recoverable disasters that produce stories instead of immediate failure.
 
-A run is a single session. When the room closes, the run is gone. That is acceptable for v0.
+The v0 objective is explicit: cross three sectors and survive the final encounter. A run should last roughly 35–60 minutes.
 
-## 2. Scope (v0)
+## 2. Design pillars
 
-**In:**
-- 2–4 player online co-op, room-code join
-- 2 classes: **Knight** (melee) and **Wizard** (ranged/support)
-- Per-class **ability-card decks** (a small starter deck each; cards are data)
-- 5 monster types
-- 3 rooms: easy → elite → boss
-- 15 slop cards (event cards, presented Slay-the-Spire style)
-- 20 upgrades
-- 15 equipment items (weapon / armor / trinket slots)
-- **3D isometric board** (react-three-fiber), fixed 45° camera, **simple low-poly models built in code** (knight, wizard, monsters, walls) — no external art
-- Slay-the-Spire card-hand UI (2D overlay) driving grid-targeted abilities
-- Lobby: create/join room, pick name, pick class, ready up
+### Shared vessel, individual bodies
 
-**Explicitly out (deferred, not scaffolded):**
-- **Postgres / any persistence.** Runs live in the Colyseus room's memory and die with it. Needed only for saved history/accounts/leaderboards — none of which v0 requires.
-- Hand-authored art assets. v0 uses procedural/primitive low-poly models and can swap in `.glb` files later.
-- Discord bot, external "chaos agent"
-- Accounts / login / auth
+Every player controls exactly one visible crew member. Crew can move, interact, repair, carry one item, and perform a role ability. Nobody directly commands another player's character.
 
-**Scope honesty:** the card engine and the 3D renderer make v0 bigger than a flat-grid slice. That is a deliberate trade for the game's identity. Everything *else* stays lean — no persistence, placeholder models, minimal content to reach the first fun-check.
+### Simultaneous crisis management
 
-## 3. Architecture
+Encounters run in real time. Weapons charge, damage disables systems, fire spreads, hull breaches drain oxygen, and boarders sabotage rooms. No normal tactical pause exists in multiplayer.
 
-One repository, workspace with three packages:
+### Cooperation with social friction
 
-```
+Players need one another, but disagree over scarce power, scrap, route choices, upgrades, and risk. Social conflict comes from competing priorities and imperfect information, not unrestricted griefing or a separate PvP victory condition.
+
+### Systems create stories
+
+Replayability comes from combinations of ship layout, sector map, encounters, upgrades, crew roles, damage, and Slop effects. Content that only changes a number is lower priority than content that changes player behavior.
+
+### Recoverable failure
+
+Bad decisions should cause cascading trouble while leaving room for an unlikely recovery. Hull reaching zero or the whole crew becoming incapacitated ends the run; losing one room or system should not.
+
+## 3. v0 scope
+
+### Included
+
+- 2–4 player online rooms with join codes, names, role selection, and ready state.
+- One shared ship layout with connected rooms and doors.
+- Direct character movement and interaction.
+- Four roles: Pilot, Engineer, Gunner, and Medic.
+- Five ship systems: helm, reactor, weapons, shields, and oxygen.
+- Hull integrity, system health, ship power, room oxygen, fire, and breaches.
+- Simple enemy ships driven by charge timers and behavior profiles.
+- One simple boarder type using room-to-room pursuit and sabotage.
+- A branching run of three sectors, approximately 3–4 nodes each.
+- Encounter types: ship combat, environmental emergency, trader, and authored event.
+- Scrap economy, repairs, and a small pool of ship upgrades.
+- Majority votes for route, event, and upgrade decisions.
+- One Slop effect per sector that changes crew behavior or ship operation.
+- Final encounter plus victory and defeat screens.
+- Reconnect grace period for a disconnected seat.
+
+### Explicitly deferred
+
+- Accounts, persistence, matchmaking, progression, achievements, and leaderboards.
+- Multiple player ships or procedural ship-layout generation.
+- Complex enemy crew simulation or tactical monster rosters.
+- Freeform PvP, traitor roles, secret personal victory conditions, and individual scoring.
+- Voice chat; players use their existing call setup.
+- Mobile controls and gamepad support.
+- Hand-authored 3D assets. v0 uses a readable top-down presentation built from primitives.
+
+## 4. Run structure
+
+### Lobby
+
+Create or join a room, enter a name, select a role, and ready up. Duplicate roles are allowed, although the lobby indicates uncovered specialties. When all players are ready, the host starts the run.
+
+### Sector map
+
+Each sector presents a small branching graph. The crew sees two or three reachable nodes and votes before a short timer expires. A majority selects the destination. On a tie, a rotating captain chooses among the tied options. Captaincy rotates after every resolved node.
+
+### Encounter
+
+An encounter is either active or deliberative:
+
+- **Active:** real-time ship combat, boarding, or environmental emergency.
+- **Deliberative:** trader or authored event with a timed group choice.
+
+Active encounters should last 2–5 minutes. More than one station must matter, and at least two concurrent problems should arise during a typical encounter.
+
+### Recovery
+
+After an encounter, award scrap and show the ship's condition. The crew may vote to repair, buy, or install an offered upgrade. Routine character actions never require a vote.
+
+### End state
+
+After three sectors, the ship enters a final encounter that tests several systems. Surviving it wins the run. Hull destruction or total crew incapacitation loses the run.
+
+## 5. Player controls and roles
+
+All crew share these verbs:
+
+- move through rooms and doors;
+- interact with a station or object;
+- repair a damaged system;
+- extinguish fire;
+- seal a breach;
+- carry or drop one item;
+- attack a nearby boarder;
+- revive an incapacitated crewmate.
+
+Roles add a passive and one cooldown ability without restricting basic verbs:
+
+| Role | Passive | Ability |
+| --- | --- | --- |
+| Pilot | Better evasion while operating helm | Emergency Burn: brief evasion spike |
+| Engineer | Repairs and power routing are faster | Overcharge: temporarily add power at a heat cost |
+| Gunner | Weapons charge faster while manned | Called Shot: next volley targets one enemy system |
+| Medic | Healing and reviving are faster | Stabilize: prevent nearby crew from becoming incapacitated |
+
+Leaving a station is always allowed. Roles create responsibility, not chores or hard locks.
+
+## 6. Ship simulation
+
+The ship is a graph of rooms connected by doors. Movement and hazards use this graph; v0 does not need a tactical tile grid.
+
+### Resources
+
+- **Hull:** shared ship health; zero ends the run.
+- **Power:** produced by the reactor and allocated to systems.
+- **System health:** controls whether a system works and at what efficiency.
+- **Oxygen:** tracked per room and equalizes through open doors.
+- **Scrap:** shared currency spent only through crew decisions.
+
+### Systems
+
+- **Helm:** enables evasion when powered and crewed.
+- **Reactor:** determines total available power; overloading risks fire.
+- **Weapons:** charges and fires installed weapons.
+- **Shields:** regenerates shield layers while powered.
+- **Oxygen:** replenishes breathable rooms.
+
+### Hazards
+
+- Fire damages crew and systems and may spread to an adjacent room.
+- Breaches drain room oxygen until sealed.
+- Disabled doors may trap or expose crew.
+- Low oxygen damages crew.
+- Crew become incapacitated before death, leaving a rescue window.
+
+The simulation advances on a fixed server tick and uses seeded randomness. The server is authoritative.
+
+## 7. Enemy behavior without complex AI
+
+Enemy ships are system profiles, not fully simulated copies of the player ship. A profile defines hull, shields, weapon timers, targeting weights, and optional boarder timing.
+
+On each server tick an enemy:
+
+1. charges enabled weapons;
+2. chooses a player system using its targeting weights;
+3. fires when charged;
+4. optionally launches a boarder on a fixed trigger.
+
+Boarders use room-level behavior only: enter, choose the nearest occupied or functioning system room, move along the shortest door path, attack nearby crew, or sabotage the room. This is the only spatial enemy AI required for v0.
+
+## 8. Voting and social decisions
+
+Votes are limited to irreversible shared decisions:
+
+- next map node;
+- event response;
+- scrap purchase or repair package;
+- ship upgrade installation.
+
+Votes have a visible 20-second timer. Players may change their vote until resolution. Majority wins; a rotating captain breaks ties. Abstaining does not block the game.
+
+Some events may give different roles one extra sentence of information. The information must be accurate but incomplete, encouraging conversation without requiring deception.
+
+## 9. Upgrades and Slop
+
+Upgrades should create new coordination patterns. Initial examples:
+
+- Backup Battery: temporary reserve power controlled from engineering.
+- Teleporter: send one crew member to sabotage an enemy system.
+- Blast Doors: slower doors that resist fire and boarders.
+- Medbay Foam: healing also extinguishes fire in the medbay.
+- Jury-Rigged Turret: automated defense that consumes reactor power.
+
+At the start of each sector, reveal one Slop effect. Good Slop changes behavior visibly:
+
+- **Crossed Wires:** station labels periodically swap, but room positions do not.
+- **Union Break:** a station loses efficiency if the same player mans it too long.
+- **Hot Reactor Summer:** extra reactor power slowly heats engineering and may ignite it.
+- **Open-Door Policy:** doors reopen several seconds after being closed.
+- **Shared Custody:** the captain role rotates whenever the ship takes hull damage.
+- **Wrong Teleporter:** teleporting chooses between two marked destinations at the last moment.
+
+Avoid filler such as `+10% enemy health` unless it supports a more meaningful rule.
+
+## 10. Technical architecture
+
+Keep the existing top-level packages:
+
+```text
 dungeonslop/
-  client/    Vite + React + react-three-fiber → 3D board + card UI, sends intents
-  server/    Colyseus + Node + TypeScript      → authoritative game state + turn engine
-  shared/    TypeScript + Zod                   → types, schemas, PURE game-logic functions
+  backend/
+    shared/   pure simulation, content, schemas, seeded RNG
+    server/   authoritative Colyseus rooms and fixed-tick run loop
+  frontend/   Vite + React client and ship presentation
 ```
 
-**Core discipline — logic vs. visuals separation (unchanged, and now paying off):**
-- **All game rules live in `shared/` as pure, deterministic functions** (movement, card resolution, energy, draw/discard, monster AI, room-clear). Randomness (deck shuffles, loot) is injected as `rng: () => number` so tests are deterministic. Trivially unit-testable with no server or client.
-- **The `server/` is the sole authority.** The Colyseus room holds authoritative state and mutates it only via `shared/` functions. Clients never decide outcomes.
-- **The `client/` renders and sends intents only.** The 3D scene and card hand are *presentational*: a **driver** supplies `GameState` + action callbacks; the scene renders and emits tile/unit picks; the hand emits card plays. Swapping the driver (hotseat ↔ Colyseus) is the only change between single-device and multiplayer. **The render tech (r3f) is invisible to `shared`** — the board is just an 16×16 grid of data.
+- **Bun** is the runtime and package manager.
+- **Shared** owns serializable state, content definitions, validation, and pure transition functions.
+- **Server** owns time, votes, RNG, connection-to-crew mapping, and all accepted commands.
+- **Frontend** renders snapshots/interpolation and sends player commands. It never resolves outcomes.
+- State is ephemeral in v0 and disappears when the room closes.
 
-**Data flow:**
-```
-client intent ("play card C on target T" / "move unit A to (3,4)")
-  → server room receives message
-  → validates via shared logic (your turn? enough energy? legal target? already moved?)
-  → mutates state via shared logic
-  → Colyseus auto-syncs state to all clients
-  → clients animate the change (3D move tween, card fly-out, hp change)
-```
+### Network commands
 
-Illegal / out-of-turn / non-owner intents are rejected server-side and ignored.
+Lobby: `setName`, `setRole`, `toggleReady`, `start`.
 
-## 4. Content is data
+Run: `move`, `interact`, `useAbility`, `dropItem`, `attackBoarder`, `vote`, and `captainTieBreak`.
 
-Classes, cards, monsters, upgrades, equipment, and slop cards are **plain typed data** in `shared/content/`, validated by Zod at load time. Adding content later is editing a data file, not writing code.
+The server rejects commands from the wrong crew owner, invalid transitions, impossible paths, unavailable interactions, and expired votes.
 
-- **Class:** `{ id, name, maxHp, moveRange, attack, maxEnergy, startingDeck: string[] }`
-- **Card:** `{ id, name, cost, effect: 'damage'|'heal'|'block', shape: 'melee'|'ranged'|'line'|'self', power, range? }`
-  - **effect** = what it does: `damage` (deal `attack + power`), `heal` (restore `power` to an ally), `block` (temporary shield of `power` on self).
-  - **shape** = how you target it, resolved against the grid + obstacles:
-    - `melee` — an adjacent enemy.
-    - `ranged` — a single enemy within `range` tiles **with clear line of sight** (a hard obstacle between blocks it).
-    - `line` — pick an orthogonal direction; the attack travels in a straight line up to `range`, **pierces enemies in its path, and stops at the first hard obstacle** (wall). (e.g. the "AK-47 Vulcan".)
-    - `self` — no target (block/buff on the caster).
-  - **Tone:** cards can be absurd — modern/joke weapons in a fantasy dungeon are on-theme for *slop*. Flavor lives entirely in card data.
-  - **Extensible by design:** `shape` is data, resolved by a single `cardTargets(state, unitId, cardId)` function + a `resolveCard` switch. Adding `blast`, `cone`, etc. later is new data + one branch — no structural change.
-- **Monster:** `{ id, name, maxHp, moveRange, attack, lootTable }` (monsters use direct AI attacks, not cards)
-- **Upgrade:** `{ id, name, description, effect }` (applied immediately on pick; effects include stat buffs and "add a card to your deck")
-- **Equipment:** `{ id, name, slot: weapon|armor|trinket, effect }` (drops from monsters)
-- **SlopCard:** `{ id, name, description, effect }` (run/room-wide modifier)
+## 11. Presentation
 
-## 5. Combat & turn model
+Use a readable top-down cutaway ship. Rooms, doors, stations, crew, boarders, fires, breaches, oxygen, and interaction targets must be distinguishable at a glance. Primitive 3D or 2.5D geometry is acceptable, but clarity is more important than spectacle.
 
-**Per player turn, the active unit has two resources:**
-- **1 Move** — a grid movement action, up to `moveRange` tiles (XCOM). Once per turn, free of energy.
-- **Energy** (e.g. 3) — spent to **play ability cards** from the hand (Slay the Spire).
+The HUD shows hull, shields, power, current objective, encounter threat, crew condition, and contextual interaction. Voting appears as a shared overlay without obscuring active emergencies.
 
-**Turn flow (active player):** start of turn → refill energy, reset the move, **draw up to hand size (5)** from the deck (reshuffle discard into deck when empty, seeded rng) → the player moves (optional) and plays cards until out of energy/targets → **end turn** → the card hand goes to discard.
+Audio cues are high value: weapon charged, hull hit, new fire, oxygen warning, vote countdown, incapacitation, and encounter completion.
 
-**Playing a card:** select the card, then pick a target tile on the grid. Legality is computed by `cardTargets(state, unitId, cardId)`, which returns the set of valid tiles for the card's `shape` (adjacency for `melee`; range + line-of-sight for `ranged`; the four orthogonal directions for `line`; none for `self`). `resolveCard` then applies the `effect`: `damage` deals `attack + power` to each affected enemy (a `line` card hits every enemy along its path until a wall stops it), `heal` restores `power` to an ally, `block` shields the caster. Playing a card pays its `cost` in energy and moves it hand→discard.
+## 12. v0 success criteria
 
-**Hard obstacles (walls)** block three things: movement, line-of-sight for `ranged` cards, and the path of `line` cards. Shared helpers `lineOfSight(state, from, to)` and `traceLine(state, from, dir, range)` encapsulate this so every card shape uses the same obstacle rules.
+The first fun-check succeeds when four friends can complete a 20-minute shortened run and, without prompting:
 
-**Round structure — seat-order queue:** P1's turn, P2's turn, … then a **monster phase** where each monster runs simple AI (approach nearest player; attack if adjacent, using its `attack` stat directly — monsters have no cards). Then the next round begins. This avoids DnD initiative edge cases.
+- divide responsibilities;
+- call out at least one urgent problem;
+- disagree over at least one group decision;
+- recover from at least one cascading failure;
+- identify who caused or solved a memorable incident;
+- ask to play another run.
 
-**Board:** 16×16 grid with walls/obstacles and an exit tile, rendered in 3D isometric. Interaction: click a tile to move there (if legal) or select a card then click a highlighted target.
-
-**Scaled for the larger board:** movement and ranges are tuned for 16×16 so the space reads as tactical, not glacial — starting `moveRange` ≈ 4–5, ranged/line card `range` ≈ 6–9. Exact values are tuning done during authoring. Rooms place the party and monsters far enough apart that positioning and approach matter.
-
-**Room clear:** all monsters defeated → exit opens → the party advances.
-
-**Between rooms:** draw 1 **Slop Card** (run/room-wide modifier) → **upgrade chest** (pick 1 of 3). Equipment drops occur *during* fights from monster loot tables.
-
-## 6. Rendering (3D isometric)
-
-- **Tech:** `react-three-fiber` + `three` + `@react-three/drei`. An **orthographic camera** at a fixed isometric angle (~45° azimuth, ~35° elevation) for the XCOM "angled from above" look. No free camera in v0 (optional gentle rotate/zoom later).
-- **Board:** 3D floor tiles (thin boxes) on an 16×16 grid; walls/obstacles are extruded cube blocks; the exit tile is a lit marker. Legal-move tiles and card targets are highlighted by tinting/emissive.
-- **Characters — simple low-poly models built from Three.js primitives in code (no external assets):**
-  - **Knight:** blocky armored torso, box limbs, a helm (box/cone), a small sword. Metallic-grey material, team-color trim.
-  - **Wizard:** robed body (tapered cylinder/cone), pointed hat (cone), a staff. Robe in team color.
-  - **Monsters:** Goblin (small green figure), Slime (squashed sphere), etc. — primitive-based.
-  - Each model is a small reusable React component (`<KnightModel/>`, `<WizardModel/>`, …). Swapping in `.glb` art later is a component-internal change.
-- **Card hand:** a 2D React/DOM overlay pinned to the bottom, Slay-the-Spire style — cards fan out, lift on hover, click (or drag) to select. Selecting a card highlights valid targets on the 3D board; clicking a target plays it.
-- **Interaction:** pointer raycasting (r3f built-in) on tiles/units for move and target selection.
-- **Presentational boundary:** the scene and hand receive `GameState` + callbacks only; all legality comes from the driver (which calls `shared` or the server).
-
-## 7. Progression (two systems, kept simple)
-
-- **Upgrades:** post-room chest, pick 1 of 3 from the 20-item pool. Applied immediately (stat buffs like +1 max HP / +1 attack / +1 move / +1 energy, or "add card X to your deck"). No inventory — picking = applied.
-- **Equipment:** three slots (weapon / armor / trinket). Drops from monsters mid-fight into a simple inventory; players equip/swap. Each item carries a stat effect. UI is minimal (list + equip button), not a drag-and-drop paperdoll.
-
-## 8. Lobby
-
-Create room → short room code. Others join by code. Each player sets a name and picks Knight or Wizard, then marks ready. When all ready, host starts → everyone enters room 1.
-
-## 9. Deployment
-
-- **Backend** (Colyseus WS + Node) → **Railway**.
-- **Frontend** (static Vite build) → **Cloudflare Pages**.
-- Client reads the server URL from `VITE_SERVER_URL` (never hardcoded). Server configures CORS + allowed WS origin for the Cloudflare domain. Only cross-host concern; baked in from day one.
-
-## 10. Testing strategy
-
-- **`shared/` logic:** unit tests are the backbone — pure, fast, deterministic (seeded rng). Cover movement legality, card play (energy, targets, effects), draw/discard/reshuffle, upgrade/equipment effects, slop-card modifiers, monster AI, room-clear/defeat.
-- **`server/`:** integration tests driving a Colyseus room through a scripted run (join → move → play card → clear → slop → upgrade → next room).
-- **`client/`:** thin. A few tests for pure UI helpers (iso projection math, hand layout); real validation is playing with friends. The 3D scene is validated by eye.
-
-## 11. Open items for the planning phase (not blockers)
-
-- Exact energy / hand-size / starter-deck tuning per class.
-- Whether upgrades that "add a card" need deck-preview UI in v0 (default: no, just apply).
-- Upgrade pick: per-player choice vs. single party vote (the "Budget Cuts" slop card implies party voting exists).
-- Reconnect behavior on drop (simplest v0 = seat stays, others continue).
+Content count is not a success metric until this loop works.

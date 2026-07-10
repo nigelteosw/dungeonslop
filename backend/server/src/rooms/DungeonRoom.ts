@@ -1,47 +1,34 @@
 import { Room, type Client } from "colyseus";
+import type { CrewRole, ShipCommand, SystemId } from "shared";
 import { DungeonState } from "../schema";
-import { GameSession, type Intent } from "../session";
+import { GameSession } from "../session";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function record(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) throw new Error("invalid payload");
+  return value as Record<string, unknown>;
 }
 
-function parseName(message: unknown): string {
-  if (!isRecord(message) || typeof message.name !== "string") throw new Error("invalid setName payload");
-  return message.name;
+function stringField(message: unknown, field: string): string {
+  const value = record(message)[field];
+  if (typeof value !== "string") throw new Error(`invalid ${field}`);
+  return value;
 }
 
-function parseClass(message: unknown): string {
-  if (!isRecord(message) || typeof message.classId !== "string") throw new Error("invalid setClass payload");
-  return message.classId;
-}
-
-function parseItem(message: unknown): string {
-  if (!isRecord(message) || typeof message.itemId !== "string") throw new Error("invalid equip payload");
-  return message.itemId;
-}
-
-function parseUpgrade(message: unknown): string {
-  if (!isRecord(message) || typeof message.upgradeId !== "string") throw new Error("invalid pickUpgrade payload");
-  return message.upgradeId;
-}
-
-function parseIntent(message: unknown): Intent {
-  if (!isRecord(message) || typeof message.kind !== "string") throw new Error("invalid intent payload");
-  if (message.kind === "move" && isRecord(message.to) && typeof message.to.x === "number" && typeof message.to.y === "number") {
-    return { kind: "move", to: { x: message.to.x, y: message.to.y } };
+function parseCommand(message: unknown): ShipCommand {
+  const value = record(message);
+  const kind = value.kind;
+  const crewId = value.crewId;
+  if (typeof kind !== "string" || typeof crewId !== "string") throw new Error("invalid ship command");
+  if (kind === "move" && typeof value.roomId === "string") return { kind, crewId, roomId: value.roomId };
+  if (kind === "moveVector" && typeof value.dx === "number" && typeof value.dy === "number" && [-1,0,1].includes(value.dx) && [-1,0,1].includes(value.dy)) return { kind, crewId, dx: value.dx as -1|0|1, dy: value.dy as -1|0|1 };
+  if ((kind === "operate" || kind === "repair") && typeof value.systemId === "string") {
+    return { kind, crewId, systemId: value.systemId as SystemId };
   }
-  if (
-    message.kind === "playCard" &&
-    typeof message.cardId === "string" &&
-    isRecord(message.target) &&
-    typeof message.target.x === "number" &&
-    typeof message.target.y === "number"
-  ) {
-    return { kind: "playCard", cardId: message.cardId, target: { x: message.target.x, y: message.target.y } };
-  }
-  if (message.kind === "endTurn") return { kind: "endTurn" };
-  throw new Error("invalid intent payload");
+  if (kind === "extinguish" || kind === "sealBreach") return { kind, crewId };
+  if (kind === "attackBoarder" && typeof value.boarderId === "string") return { kind, crewId, boarderId: value.boarderId };
+  if (kind === "useAbility") return { kind, crewId };
+  if (kind === "revive" && typeof value.targetCrewId === "string") return { kind, crewId, targetCrewId: value.targetCrewId };
+  throw new Error("invalid ship command");
 }
 
 export class DungeonRoom extends Room<DungeonState> {
@@ -51,13 +38,16 @@ export class DungeonRoom extends Room<DungeonState> {
   onCreate(): void {
     this.session = new GameSession(this.roomId || "dungeon");
     this.setState(new DungeonState());
-    this.onMessage("setName", (client, message) => this.apply(client, () => this.session.setName(client.sessionId, parseName(message))));
-    this.onMessage("setClass", (client, message) => this.apply(client, () => this.session.setClass(client.sessionId, parseClass(message))));
+    this.onMessage("setName", (client, message) => this.apply(client, () => this.session.setName(client.sessionId, stringField(message, "name"))));
+    this.onMessage("setRole", (client, message) => this.apply(client, () => this.session.setRole(client.sessionId, stringField(message, "role") as CrewRole)));
     this.onMessage("toggleReady", (client) => this.apply(client, () => this.session.toggleReady(client.sessionId)));
     this.onMessage("start", (client) => this.apply(client, () => this.session.start(client.sessionId)));
-    this.onMessage("intent", (client, message) => this.apply(client, () => this.session.handleIntent(client.sessionId, parseIntent(message))));
-    this.onMessage("pickUpgrade", (client, message) => this.apply(client, () => this.session.pickUpgrade(client.sessionId, parseUpgrade(message))));
-    this.onMessage("equip", (client, message) => this.apply(client, () => this.session.equip(client.sessionId, parseItem(message))));
+    this.onMessage("command", (client, message) => this.apply(client, () => this.session.handleCommand(client.sessionId, parseCommand(message))));
+    this.onMessage("vote", (client, message) => this.apply(client, () => this.session.castVote(client.sessionId, stringField(message, "option"))));
+    this.clock.setInterval(() => {
+      this.session.tick();
+      this.project();
+    }, 400);
   }
 
   onJoin(client: Client): void {

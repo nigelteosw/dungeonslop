@@ -1,6 +1,13 @@
-import { useState, type CSSProperties } from 'react';
-import { CLASSES } from '../engine';
-import type { LobbyPlayerLike } from '../net/schemaAdapter';
+import { useState } from 'react';
+import type { CrewRole, LobbyPlayerLike } from '../net/schemaAdapter';
+import './ship.css';
+
+const ROLES: { id: CrewRole; name: string; job: string }[] = [
+  { id: 'pilot', name: 'Pilot', job: 'Evasion and emergency burns' },
+  { id: 'engineer', name: 'Engineer', job: 'Fast repairs and reactor control' },
+  { id: 'gunner', name: 'Gunner', job: 'Weapons and called shots' },
+  { id: 'medic', name: 'Medic', job: 'Revives and crew survival' },
+];
 
 interface Props {
   status: 'idle' | 'connecting' | 'lobby' | 'in-game' | 'error';
@@ -12,92 +19,35 @@ interface Props {
   onCreate: () => void;
   onJoin: (code: string) => void;
   onSetName: (name: string) => void;
-  onSetClass: (classId: string) => void;
+  onSetRole: (role: CrewRole) => void;
   onToggleReady: () => void;
   onStart: () => void;
 }
 
-export function LobbyScreen({
-  status, error, roomCode, mySessionId, players, isHost,
-  onCreate, onJoin, onSetName, onSetClass, onToggleReady, onStart,
-}: Props) {
+export function LobbyScreen(props: Props) {
   const [joinCode, setJoinCode] = useState('');
   const [name, setName] = useState('');
-  const me = players.find((p) => p.sessionId === mySessionId);
-  const allReady = players.length > 0 && players.every((p) => p.ready);
+  const me = props.players.find((player) => player.sessionId === props.mySessionId);
+  const allReady = props.players.length > 0 && props.players.every((player) => player.ready);
 
-  if (status === 'idle' || status === 'connecting' || status === 'error') {
-    return (
-      <div style={landingStyle}>
-        <h1>Dungeonslop</h1>
-        <button style={bigButton} disabled={status === 'connecting'} onClick={onCreate}>
-          Create Room
-        </button>
-        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <input
-            placeholder="Room code"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            style={{ padding: 8, fontSize: 16 }}
-          />
-          <button disabled={status === 'connecting' || !joinCode.trim()} onClick={() => onJoin(joinCode)}>
-            Join Room
-          </button>
-        </div>
-        {status === 'connecting' && <p>Connecting...</p>}
-        {error && <p style={{ color: '#f87171' }}>{error}</p>}
+  if (props.status !== 'lobby' && props.status !== 'in-game') {
+    return <main className="lobby-shell">
+      <div className="lobby-card">
+        <p className="eyebrow">SHIP FRIENDSLOP</p><h1>Dungeonslop</h1>
+        <p>One ship. One crew. Several avoidable emergencies.</p>
+        <button className="primary" disabled={props.status === 'connecting'} onClick={props.onCreate}>Create ship</button>
+        <div className="join-row"><input aria-label="Room code" placeholder="Room code" value={joinCode} onChange={(event) => setJoinCode(event.target.value)} /><button disabled={!joinCode.trim()} onClick={() => props.onJoin(joinCode)}>Join</button></div>
+        {props.status === 'connecting' && <p>Connecting…</p>}{props.error && <p className="error">{props.error}</p>}
       </div>
-    );
+    </main>;
   }
 
-  return (
-    <div style={landingStyle}>
-      <h1>Dungeonslop</h1>
-      <p>
-        Room code: <strong style={{ fontSize: 24, letterSpacing: 2 }}>{roomCode}</strong>
-      </p>
-      <p style={{ opacity: 0.7 }}>Share this code with friends — or press Start and play solo.</p>
-
-      <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
-        <input
-          placeholder="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && onSetName(name)}
-          style={{ padding: 8, fontSize: 16 }}
-        />
-        {Object.values(CLASSES).map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onSetClass(c.id)}
-            style={{ fontWeight: me?.classId === c.id ? 700 : 400 }}
-          >
-            {c.name}
-          </button>
-        ))}
-        <button onClick={onToggleReady}>{me?.ready ? 'Not ready' : 'Ready'}</button>
-      </div>
-
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {players.map((p) => (
-          <li key={p.sessionId}>
-            {p.host ? '👑 ' : ''}{p.name || '(unnamed)'} — {p.classId} — {p.ready ? 'ready' : 'not ready'}
-          </li>
-        ))}
-      </ul>
-
-      {isHost && (
-        <button style={bigButton} disabled={!allReady} onClick={onStart}>
-          Start Game{players.length === 1 ? ' (Solo)' : ''}
-        </button>
-      )}
-      {error && <p style={{ color: '#f87171' }}>{error}</p>}
-    </div>
-  );
+  return <main className="lobby-shell"><div className="lobby-card wide">
+    <p className="eyebrow">CREW ASSEMBLY · {props.roomCode}</p><h1>Choose your responsibility</h1>
+    <div className="identity-row"><input placeholder="Callsign" value={name} onChange={(event) => setName(event.target.value)} onBlur={() => name.trim() && props.onSetName(name)} /></div>
+    <div className="role-grid">{ROLES.map((role) => <button key={role.id} className={me?.role === role.id ? 'role selected' : 'role'} onClick={() => props.onSetRole(role.id)}><strong>{role.name}</strong><small>{role.job}</small></button>)}</div>
+    <div className="crew-list">{props.players.map((player) => <div key={player.sessionId}><span>{player.host ? 'CAPTAIN · ' : ''}{player.name}</span><b>{player.role}</b><em>{player.ready ? 'READY' : 'NOT READY'}</em></div>)}</div>
+    <div className="lobby-actions"><button onClick={props.onToggleReady}>{me?.ready ? 'Stand down' : 'Ready up'}</button>{props.isHost && <button className="primary" disabled={!allReady} onClick={props.onStart}>Launch run</button>}</div>
+    {props.error && <p className="error">{props.error}</p>}
+  </div></main>;
 }
-
-const landingStyle: CSSProperties = {
-  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-  alignItems: 'center', justifyContent: 'center', gap: 8, textAlign: 'center',
-};
-const bigButton: CSSProperties = { padding: '12px 24px', fontSize: 18, marginTop: 8 };
