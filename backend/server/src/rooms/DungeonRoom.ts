@@ -59,7 +59,7 @@ export class DungeonRoom extends Room<DungeonState> {
     this.clock.setInterval(() => {
       this.session.tick();
       this.project();
-    }, 400);
+    }, 800);
   }
 
   onJoin(client: Client): void {

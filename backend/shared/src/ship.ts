@@ -36,7 +36,8 @@ const FIRE_SPREAD_CHANCE = 0.0125;
 const SPREAD_SIDES: DoorSide[] = ["e", "n", "s", "w"];
 const OXY_DRAIN_PER_CREW = 1;
 const OXY_PRODUCE_PER_TICK = 2;
-const OXY_EQUALIZE_RATE = 2;
+const OXY_SHIPWIDE_PRODUCE_PER_TICK = 1;
+const OXY_EQUALIZE_RATE = 3;
 
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
@@ -310,19 +311,32 @@ function requireWeaponOperator(next: RunState, crewId: string): void {
   if (weapons.health <= 0 || weapons.power <= 0) throw new Error("weapons are offline");
 }
 
-function resolvePlayerVolley(next: RunState): void {
+// Manual fire (a crew member pulling the trigger) always lands cleanly. Auto-fire -
+// what happens once the volley is ready and nobody has fired it yet - is rolled: a
+// crewed weapon is still reliable and can crit, an unattended auto-turret often misses
+// and never crits.
+const WEAPON_AUTOFIRE_MISS_CHANCE_MANNED = 0.1;
+const WEAPON_AUTOFIRE_MISS_CHANCE_UNMANNED = 0.45;
+const WEAPON_AUTOFIRE_CRIT_CHANCE = 0.2;
+
+function resolvePlayerVolley(next: RunState, autofire?: { rng: Rng; manned: boolean }): void {
   const enemy = next.enemy;
   if (!enemy) throw new Error("no hostile target");
+  next.ship.weaponChargeTicks = 0;
+  if (autofire) {
+    const missChance = autofire.manned ? WEAPON_AUTOFIRE_MISS_CHANCE_MANNED : WEAPON_AUTOFIRE_MISS_CHANCE_UNMANNED;
+    if (autofire.rng() < missChance) return;
+  }
+  const crit = !!autofire?.manned && autofire.rng() < WEAPON_AUTOFIRE_CRIT_CHANCE;
   const target = next.ship.weaponTarget;
   if (enemy.shields > 0) {
-    enemy.shields = Math.max(0, enemy.shields - (target === "shields" ? 2 : 1));
+    enemy.shields = Math.max(0, enemy.shields - (target === "shields" ? 2 : 1) * (crit ? 2 : 1));
   } else {
-    const damage = target === "core" ? 3 : target === "weapons" ? 1 : 2;
+    const damage = (target === "core" ? 3 : target === "weapons" ? 1 : 2) * (crit ? 2 : 1);
     enemy.hull = Math.max(0, enemy.hull - damage);
     if (target === "weapons") enemy.weaponChargeTicks = Math.max(0, enemy.weaponChargeTicks - 8);
     if (target === "helm") enemy.weaponChargeTicks = Math.max(0, enemy.weaponChargeTicks - 3);
   }
-  next.ship.weaponChargeTicks = 0;
   if (enemy.hull === 0) {
     next.status = "victory";
     next.objectiveText = "Hostile ship disabled";
@@ -550,6 +564,14 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
   if (oxygenRoom && oxygenSystem.health > 0 && oxygenSystem.power > 0 && oxygenSystem.operatorCrewId) {
     const thinAir = next.slopEffectId === "thin-air";
     oxygenRoom.oxygen = Math.min(100, oxygenRoom.oxygen + (thinAir ? 1 : OXY_PRODUCE_PER_TICK));
+    // Life support vents the whole ship, not just its own room; breached and
+    // destroyed rooms can't hold the air so they're excluded.
+    if (!thinAir) {
+      for (const room of Object.values(next.ship.rooms)) {
+        if (room.id === oxygenRoom.id || room.breached || room.destroyed) continue;
+        room.oxygen = Math.min(100, room.oxygen + OXY_SHIPWIDE_PRODUCE_PER_TICK);
+      }
+    }
   }
 
   for (const door of Object.values(next.ship.doors)) {
@@ -663,6 +685,9 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
   const playerWeapons = next.ship.systems.weapons;
   const weaponOperator = playerWeapons.operatorCrewId ? next.crew[playerWeapons.operatorCrewId] : undefined;
   const autoTurret = next.installedUpgrades.includes("auto-turret") && !weaponOperator;
+  // A volley that finished charging last tick is still visible as "ready" this tick
+  // (so the crew sees and hears it) before auto-fire claims it below.
+  const weaponWasReady = next.ship.weaponChargeMaxTicks > 0 && next.ship.weaponChargeTicks >= next.ship.weaponChargeMaxTicks;
   if (playerWeapons.health > 0 && playerWeapons.power > 0 && (weaponOperator || autoTurret)) {
     const chargeRate = weaponOperator?.role === "gunner" ? 2 : 1;
     next.ship.weaponChargeTicks = Math.min(next.ship.weaponChargeMaxTicks, next.ship.weaponChargeTicks + chargeRate);
@@ -675,8 +700,8 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     if (next.tick === 20 && Object.keys(next.boarders).length === 0) {
       next.boarders.b0 = { id: "b0", roomId: "oxygen", health: 75, targetRoomId: "engineering" };
     }
-    if (autoTurret && next.ship.weaponChargeTicks >= next.ship.weaponChargeMaxTicks) {
-      resolvePlayerVolley(next);
+    if (weaponWasReady && (weaponOperator || autoTurret)) {
+      resolvePlayerVolley(next, { rng, manned: !!weaponOperator });
       if (next.slopEffectId === "volatile-weapons" && rng() < 0.2) igniteRandomTile(next.ship, "weapons", rng, next.tick);
     }
 

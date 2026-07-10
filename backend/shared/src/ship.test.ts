@@ -194,6 +194,63 @@ test("an aimed shield volley strips two layers and consumes its charge", () => {
   expect(run.ship.weaponChargeTicks).toBe(0);
 });
 
+test("a manned weapon auto-fires the tick after charging completes, with no manual fire command", () => {
+  let run = encounter("gunner", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  run.enemy!.shields = 0;
+  run.enemy!.hull = 10;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = stepShipSimulation(run, () => 0.5);
+  expect(run.enemy!.hull).toBe(8);
+  expect(run.ship.weaponChargeTicks).toBe(0);
+});
+
+test("a manned auto-fire volley can still miss, at a low rate", () => {
+  let run = encounter("gunner", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  run.enemy!.shields = 0;
+  run.enemy!.hull = 10;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = stepShipSimulation(run, () => 0.05);
+  expect(run.enemy!.hull).toBe(10);
+  expect(run.ship.weaponChargeTicks).toBe(0);
+});
+
+test("a manned auto-fire volley can crit for double damage", () => {
+  let run = encounter("gunner", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  run.enemy!.shields = 0;
+  run.enemy!.hull = 10;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = stepShipSimulation(run, () => 0.15);
+  expect(run.enemy!.hull).toBe(6);
+});
+
+test("an unmanned auto-turret volley misses far more often and never crits", () => {
+  let run = encounter("pilot", "weapons");
+  run.installedUpgrades.push("auto-turret");
+  run.enemy!.shields = 0;
+  run.enemy!.hull = 10;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = stepShipSimulation(run, () => 0.3);
+  expect(run.enemy!.hull).toBe(10);
+  expect(run.ship.weaponChargeTicks).toBe(0);
+});
+
+test("manual fire always lands cleanly regardless of the auto-fire miss chance", () => {
+  let run = encounter("gunner", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  run.enemy!.shields = 0;
+  run.enemy!.hull = 10;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = applyShipCommand(run, { kind: "fireWeapon", crewId: "c0" });
+  expect(run.enemy?.hull).toBe(8);
+});
+
 test("boarders sabotage systems and can be fought by colocated crew", () => {
   let run = encounter("gunner", "oxygen");
   run.boarders.b0 = { id: "b0", roomId: "oxygen", health: 40, targetRoomId: "oxygen" };
@@ -512,4 +569,26 @@ test("oxygen only regenerates in the oxygen room while it is operated, and equal
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
   run = completeInteraction(run);
   expect(run.ship.systems.oxygen.operatorCrewId).toBe("c0");
+});
+
+test("operating the oxygen system raises levels ship-wide, not just in its own room", () => {
+  let run = encounter("engineer", "oxygen");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
+  run = completeInteraction(run);
+  run.ship.rooms.bridge!.oxygen = 50;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.bridge?.oxygen).toBeGreaterThan(50);
+});
+
+test("a breached room is excluded from the ship-wide oxygen trickle", () => {
+  let run = encounter("engineer", "oxygen");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
+  run = completeInteraction(run);
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.roomA === "bridge" || door.roomB === "bridge") door.state = "locked";
+  }
+  run.ship.rooms.bridge!.breached = true;
+  run.ship.rooms.bridge!.oxygen = 0;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.bridge?.oxygen).toBe(0);
 });
