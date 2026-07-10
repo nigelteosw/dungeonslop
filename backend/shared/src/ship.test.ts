@@ -199,6 +199,25 @@ test("opening a hull vent kills anyone inside and empties the room's oxygen", ()
   expect(vented.crew.c0).toBeDefined();
 });
 
+test("venting a room clears its system's operatorCrewId and stops phantom oxygen production", () => {
+  let run = encounter("engineer", "oxygen");
+  run.crew.c1 = createCrew("c1", "s1", "Riko", "pilot", "bridge");
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.kind === "interior" && (door.roomA === "oxygen" || door.roomB === "oxygen")) door.state = "locked";
+  }
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
+  run = applyShipCommand(run, { kind: "operate", crewId: "c1", systemId: "helm" });
+  expect(run.ship.systems.oxygen.operatorCrewId).toBe("c0");
+  const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull" && door.roomA === "oxygen")!.id;
+  const vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c1", doorId: hullVentId, state: "open" });
+  expect(vented.crew.c0).toBeUndefined();
+  expect(vented.ship.systems.oxygen.operatorCrewId).toBeUndefined();
+  expect(vented.ship.rooms.oxygen?.oxygen).toBe(0);
+
+  const stepped = stepShipSimulation(vented, () => 1);
+  expect(stepped.ship.rooms.oxygen?.oxygen).toBe(0);
+});
+
 test("a room at zero integrity is destroyed: its system dies, it breaches, and its doors lock", () => {
   let run = encounter("engineer", "engineering");
   run.ship.rooms.engineering!.integrity = 0;

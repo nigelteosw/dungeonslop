@@ -118,7 +118,12 @@ function ventRoom(next: RunState, roomId: string): void {
     if (next.ship.fires[fireId]?.roomId === roomId) delete next.ship.fires[fireId];
   }
   for (const crew of Object.values(next.crew)) {
-    if (crew.roomId === roomId) delete next.crew[crew.id];
+    if (crew.roomId === roomId) {
+      for (const system of Object.values(next.ship.systems)) {
+        if (system.operatorCrewId === crew.id) system.operatorCrewId = undefined;
+      }
+      delete next.crew[crew.id];
+    }
   }
 }
 
