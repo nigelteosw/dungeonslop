@@ -73,6 +73,9 @@ test("WASD movement updates deck position and crosses only a connected module bo
 
 test("breach drains oxygen and low oxygen incapacitates crew deterministically", () => {
   let run = encounter("engineer", "engineering");
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.roomA === "engineering" || door.roomB === "engineering") door.state = "locked";
+  }
   run.ship.rooms.engineering!.breached = true;
   run.ship.rooms.engineering!.oxygen = 8;
   run.crew.c0!.health = 4;
@@ -252,6 +255,9 @@ test("taking damage while channeling does not interrupt extinguish progress", ()
 
 test("fire self-extinguishes once its room runs out of oxygen", () => {
   let run = encounter("pilot", "bridge");
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.roomA === "bridge" || door.roomB === "bridge") door.state = "locked";
+  }
   run.ship.rooms.bridge!.oxygen = 0;
   run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 1, channelTicks: 2 };
   run = stepShipSimulation(run, () => 1);
@@ -273,4 +279,51 @@ test("fire does not spread through a closed door", () => {
   run = stepShipSimulation(run, () => 0);
   const spread = Object.values(run.ship.fires).some((fire) => fire.roomId === "bridge");
   expect(spread).toBe(false);
+});
+
+test("an empty room's oxygen does not change on its own", () => {
+  let run = encounter("pilot", "bridge");
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.roomA === "shields" || door.roomB === "shields") door.state = "locked";
+  }
+  run.ship.rooms.shields!.oxygen = 42;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.shields?.oxygen).toBe(42);
+});
+
+test("occupied rooms drain oxygen faster with more crew present", () => {
+  let solo = encounter("pilot", "shields");
+  for (const door of Object.values(solo.ship.doors)) {
+    if (door.roomA === "shields" || door.roomB === "shields") door.state = "locked";
+  }
+  solo = stepShipSimulation(solo, () => 1);
+  expect(solo.ship.rooms.shields?.oxygen).toBe(99);
+
+  let crewed = createRun("seed", [
+    createCrew("c0", "s0", "Ada", "pilot", "shields"),
+    createCrew("c1", "s1", "Bo", "gunner", "shields"),
+  ]);
+  crewed = castVote(crewed, "s0", "scrap-raider");
+  crewed = castVote(crewed, "s1", "scrap-raider");
+  for (const door of Object.values(crewed.ship.doors)) {
+    if (door.roomA === "shields" || door.roomB === "shields") door.state = "locked";
+  }
+  crewed = stepShipSimulation(crewed, () => 1);
+  expect(crewed.ship.rooms.shields?.oxygen).toBe(98);
+});
+
+test("oxygen only regenerates in the oxygen room while it is operated, and equalizes through its open door", () => {
+  let run = encounter("engineer", "oxygen");
+  for (const door of Object.values(run.ship.doors)) {
+    if (door.id !== "medbay--oxygen") door.state = "locked";
+  }
+  run.ship.rooms.oxygen!.oxygen = 50;
+  run.ship.rooms.medbay!.oxygen = 50;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.oxygen?.oxygen).toBe(50);
+
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.oxygen?.oxygen).toBe(49);
+  expect(run.ship.rooms.medbay?.oxygen).toBe(51);
 });

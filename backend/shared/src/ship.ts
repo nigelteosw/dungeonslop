@@ -31,6 +31,9 @@ const STEP_TICKS = 5;
 const STEPS_TO_EXTINGUISH = 3;
 const FIRE_SPREAD_CHANCE = 0.0125;
 const SPREAD_SIDES: DoorSide[] = ["e", "n", "s", "w"];
+const OXY_DRAIN_PER_CREW = 1;
+const OXY_PRODUCE_PER_TICK = 2;
+const OXY_EQUALIZE_RATE = 2;
 
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
@@ -388,15 +391,44 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
   const next = structuredClone(state);
   next.tick += 1;
 
+  const occupancy = new Map<string, number>();
+  for (const crew of Object.values(next.crew)) {
+    if (crew.incapacitated) continue;
+    occupancy.set(crew.roomId, (occupancy.get(crew.roomId) ?? 0) + 1);
+  }
+
   for (const room of Object.values(next.ship.rooms)) {
     const thinAir = next.slopEffectId === "thin-air";
-    if (room.breached) room.oxygen = Math.max(0, room.oxygen - (thinAir ? 4 : 3));
-    else if (next.ship.systems.oxygen.health > 0 && next.ship.systems.oxygen.power > 0) room.oxygen = Math.min(100, room.oxygen + (thinAir ? 1 : 2));
+    if (room.breached) {
+      room.oxygen = Math.max(0, room.oxygen - (thinAir ? 4 : 3));
+    } else {
+      const crewCount = occupancy.get(room.id) ?? 0;
+      if (crewCount > 0) room.oxygen = Math.max(0, room.oxygen - crewCount * OXY_DRAIN_PER_CREW);
+    }
     const roomFireCount = Object.values(next.ship.fires).filter((fire) => fire.roomId === room.id).length;
     if (roomFireCount > 0) {
       room.oxygen = Math.max(0, room.oxygen - FIRE_OXY_DRAIN_PER_TOKEN * roomFireCount);
       room.integrity = Math.max(0, room.integrity - FIRE_INTEGRITY_DAMAGE_PER_TOKEN * roomFireCount);
     }
+  }
+
+  const oxygenSystem = next.ship.systems.oxygen;
+  const oxygenRoom = next.ship.rooms[oxygenSystem.roomId];
+  if (oxygenRoom && oxygenSystem.health > 0 && oxygenSystem.power > 0 && oxygenSystem.operatorCrewId) {
+    const thinAir = next.slopEffectId === "thin-air";
+    oxygenRoom.oxygen = Math.min(100, oxygenRoom.oxygen + (thinAir ? 1 : OXY_PRODUCE_PER_TICK));
+  }
+
+  for (const door of Object.values(next.ship.doors)) {
+    if (door.kind !== "interior" || door.state !== "open" || !door.roomB) continue;
+    const roomA = next.ship.rooms[door.roomA];
+    const roomB = next.ship.rooms[door.roomB];
+    if (!roomA || !roomB) continue;
+    const diff = roomA.oxygen - roomB.oxygen;
+    if (Math.abs(diff) < 1) continue;
+    const flow = Math.sign(diff) * Math.min(OXY_EQUALIZE_RATE, Math.abs(diff));
+    roomA.oxygen = Math.max(0, Math.min(100, roomA.oxygen - flow));
+    roomB.oxygen = Math.max(0, Math.min(100, roomB.oxygen + flow));
   }
 
   for (const room of Object.values(next.ship.rooms)) {
