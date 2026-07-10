@@ -122,6 +122,7 @@ export interface EnemyState {
   shields: number;
   weaponChargeTicks: number;
   weaponChargeMaxTicks: number;
+  scriptedVolleyUsed?: boolean;
 }
 
 export interface VoteState {

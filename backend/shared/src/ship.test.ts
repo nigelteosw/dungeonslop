@@ -362,6 +362,26 @@ test("a weapon hit reduces the target room's integrity", () => {
   expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
 });
 
+test("the enemy's first hull hit scripts a combined fire and breach while the player's weapon is still charging", () => {
+  let run = encounter("pilot");
+  run.ship.shields = 0;
+  run.enemy!.weaponChargeTicks = run.enemy!.weaponChargeMaxTicks - 1;
+  run = stepShipSimulation(run, () => 0);
+  expect(run.enemy?.scriptedVolleyUsed).toBe(true);
+  expect(run.ship.rooms.bridge?.breached).toBe(true);
+  expect(Object.values(run.ship.fires).some((fire) => fire.roomId === "bridge")).toBe(true);
+});
+
+test("later hull hits fall back to a single random hazard once the scripted volley is spent", () => {
+  let run = encounter("pilot");
+  run.ship.shields = 0;
+  run.enemy!.scriptedVolleyUsed = true;
+  run.enemy!.weaponChargeTicks = run.enemy!.weaponChargeMaxTicks - 1;
+  run = stepShipSimulation(run, () => 0.99);
+  expect(run.ship.rooms.oxygen?.breached).toBe(true);
+  expect(Object.values(run.ship.fires).some((fire) => fire.roomId === "oxygen")).toBe(false);
+});
+
 test("a small fire is extinguished by a short channel", () => {
   let run = encounter("pilot", "bridge");
   run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };

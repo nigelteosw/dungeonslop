@@ -695,8 +695,19 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
           const room = next.ship.rooms[system.roomId];
           if (room) {
             room.integrity = Math.max(0, room.integrity - HIT_INTEGRITY_DAMAGE);
-            if (rng() < 0.45) igniteRandomTile(next.ship, room.id, rng, next.tick);
-            else room.breached = true;
+            // Scripted first-hit salvo: the enemy's opening hull hit lands while the
+            // player's own volley is still charging, forcing a fire-and-breach choice
+            // instead of the usual single random hazard.
+            const weaponsCharging = next.ship.weaponChargeTicks < next.ship.weaponChargeMaxTicks;
+            if (!enemy.scriptedVolleyUsed && weaponsCharging) {
+              enemy.scriptedVolleyUsed = true;
+              igniteRandomTile(next.ship, room.id, rng, next.tick);
+              room.breached = true;
+            } else if (rng() < 0.45) {
+              igniteRandomTile(next.ship, room.id, rng, next.tick);
+            } else {
+              room.breached = true;
+            }
           }
         }
       }

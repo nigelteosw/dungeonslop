@@ -4,7 +4,7 @@
 **Source of truth:** `GAMEPLAN.md`, supplemented by `docs/superpowers/specs/2026-07-04-dungeonslop-v0-design.md`  
 **Goal:** Deliver a compact, browser-based co-op ship-management game that feels like the GAMEPLAN: friends operate one failing ship, coordinate under real-time pressure, and make shared decisions between encounters.
 
-**Implementation status:** Phase 0, the Phase 1 reactor-power slice, and the starter Pulse Laser portion of Phase 2 are complete and source-verified on 2026-07-10. The second weapon and additional target effects remain in Phase 2.
+**Implementation status:** Phase 1, Phase 3, and Phase 4 are complete. The starter Pulse Laser portion of Phase 2 is complete; the second weapon remains. One Phase 0 fixture test and the second weapon are the only items left before Phase 5.
 
 ## Product boundary
 
@@ -115,7 +115,7 @@ The next implementation should concentrate on making the core co-op choices obvi
 - [x] Make low oxygen, fire, breach, locked doors, and destroyed rooms distinguishable by color, icon, text label, and animation.
 - [x] Add a clear enemy panel: hull, shields, weapon charge, selected target, and imminent-volley warning.
 - [x] Preserve the local player’s contextual actions, but make the currently most useful action prominent.
-- [ ] Verify keyboard movement, focus states, reduced motion, and a standard desktop layout before styling for smaller screens.
+- [x] Verify keyboard movement, focus states, reduced motion, and a standard desktop layout before styling for smaller screens.
 
 **Exit:** a player can identify the next urgent problem, the crew member who should handle it, and the system that needs power within a glance.
 
@@ -123,13 +123,13 @@ The next implementation should concentrate on making the core co-op choices obvi
 
 **Purpose:** prove that the game creates recoverable co-op panic instead of isolated chores.
 
-- [ ] Tune fire so it consumes oxygen, hurts nearby crew, damages rooms/systems, and can spread through open doors.
-- [ ] Tune breaches so they drain oxygen, require a repair action, and create a meaningful choice between sealing and venting.
-- [ ] Keep door operation simple: local opening for adjacent interior doors; bridge control for locks and hull vents.
-- [ ] Keep one boarder behavior only: enter, move toward a useful system, fight crew in-room, and sabotage when uncontested.
-- [ ] Make incapacitation and revive windows visible and recoverable.
-- [ ] Add one scripted encounter where an enemy volley creates both a fire and a breach while Weapons are charging.
-- [ ] Add audio and visual cues for new fire, breach, oxygen warning, weapon ready, incoming volley, crew incapacity, and encounter resolution.
+- [x] Tune fire so it consumes oxygen, hurts nearby crew, damages rooms/systems, and can spread through open doors.
+- [x] Tune breaches so they drain oxygen, require a repair action, and create a meaningful choice between sealing and venting.
+- [x] Keep door operation simple: local opening for adjacent interior doors; bridge control for locks and hull vents.
+- [x] Keep one boarder behavior only: enter, move toward a useful system, fight crew in-room, and sabotage when uncontested.
+- [x] Make incapacitation and revive windows visible and recoverable.
+- [x] Add one scripted encounter where an enemy volley creates both a fire and a breach while Weapons are charging.
+- [x] Add audio and visual cues for new fire, breach, oxygen warning, weapon ready, incoming volley, crew incapacity, and encounter resolution.
 
 **Exit:** a playtest group must choose between holding stations, saving a crew member, fighting a boarder, repairing a breach, and preparing the next volley.
 
