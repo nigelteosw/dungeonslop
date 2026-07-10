@@ -148,11 +148,12 @@ test("each role ability creates a distinct authoritative effect", () => {
   expect(() => applyShipCommand(medic, { kind: "useAbility", crewId: "c0" })).toThrow("cooling down");
 });
 
-test("extinguish removes the targeted fire token", () => {
+test("extinguish starts channeling on the targeted fire token", () => {
   let run = encounter("pilot", "bridge");
   run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
   run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
-  expect(run.ship.fires.f0).toBeUndefined();
+  expect(run.crew.c0?.extinguishingFireId).toBe("f0");
+  expect(run.ship.fires.f0).toBeDefined();
 });
 
 test("a crew member can open a closed interior door from either side", () => {
@@ -215,4 +216,36 @@ test("a weapon hit reduces the target room's integrity", () => {
   run = stepShipSimulation(run, () => 0.99);
   const hitRoom = Object.values(run.ship.rooms).find((room, index) => room.integrity < Object.values(before as never)[index]);
   expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
+});
+
+test("extinguishing a fire takes three channeled steps", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
+  for (let i = 0; i < 14; i += 1) run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0).toBeDefined();
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0).toBeUndefined();
+});
+
+test("moving away from a fire resets its extinguish progress", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
+  run = stepShipSimulation(run, () => 1);
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0?.channelTicks).toBe(2);
+  run = applyShipCommand(run, { kind: "moveVector", crewId: "c0", dx: -1, dy: 0 });
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0).toMatchObject({ stepsDone: 0, channelTicks: 0 });
+});
+
+test("taking damage while channeling does not interrupt extinguish progress", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  run.ship.rooms.bridge!.oxygen = 5;
+  run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
+  run = stepShipSimulation(run, () => 1);
+  expect(run.crew.c0!.health).toBeLessThan(100);
+  expect(run.ship.fires.f0?.channelTicks).toBe(1);
 });

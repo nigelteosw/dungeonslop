@@ -86,6 +86,7 @@ export interface CrewState {
   bleedoutTicks: number;
   abilityCooldownTicks: number;
   carryingItemId?: string;
+  extinguishingFireId?: string;
 }
 
 export interface BoarderState {

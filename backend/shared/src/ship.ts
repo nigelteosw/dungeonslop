@@ -27,6 +27,8 @@ const HIT_INTEGRITY_DAMAGE = 1;
 const FIRE_OXY_DRAIN_PER_TOKEN = 2;
 const FIRE_INTEGRITY_DAMAGE_PER_TOKEN = 1;
 const FIRE_CREW_DAMAGE_PER_TOKEN = 2;
+const STEP_TICKS = 5;
+const STEPS_TO_EXTINGUISH = 3;
 
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
@@ -258,6 +260,8 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
   const next = structuredClone(state);
   const crew = activeCrew(next, command.crewId);
 
+  if (command.kind !== "extinguish") crew.extinguishingFireId = undefined;
+
   if (command.kind === "move") {
     if (!adjacentRooms(next.ship, crew.roomId).includes(command.roomId)) throw new Error("room is not directly reachable");
     crew.roomId = command.roomId;
@@ -318,7 +322,8 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
   if (command.kind === "extinguish") {
     const fire = next.ship.fires[command.fireId];
     if (!fire || fire.roomId !== crew.roomId) throw new Error("no fire there to extinguish");
-    delete next.ship.fires[fire.id];
+    if (Math.max(Math.abs(fire.x - crew.deckX), Math.abs(fire.y - crew.deckY)) > 1) throw new Error("too far from the fire to extinguish it");
+    crew.extinguishingFireId = fire.id;
     return next;
   }
   if (command.kind === "sealBreach") {
@@ -393,6 +398,28 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     for (const door of Object.values(next.ship.doors)) {
       if (door.roomA === room.id || door.roomB === room.id) door.state = "locked";
     }
+  }
+
+  for (const fire of Object.values(next.ship.fires)) {
+    const channeler = Object.values(next.crew).find(
+      (candidate) => candidate.extinguishingFireId === fire.id && !candidate.incapacitated,
+    );
+    const stillChanneling = channeler
+      && channeler.roomId === fire.roomId
+      && Math.max(Math.abs(fire.x - channeler.deckX), Math.abs(fire.y - channeler.deckY)) <= 1;
+    if (stillChanneling) {
+      fire.channelTicks += 1;
+      if (fire.channelTicks >= STEP_TICKS) {
+        fire.stepsDone += 1;
+        fire.channelTicks = 0;
+      }
+    } else {
+      fire.stepsDone = 0;
+      fire.channelTicks = 0;
+    }
+  }
+  for (const [id, fire] of Object.entries(next.ship.fires)) {
+    if (fire.stepsDone >= STEPS_TO_EXTINGUISH) delete next.ship.fires[id];
   }
 
   for (const crew of Object.values(next.crew)) {
