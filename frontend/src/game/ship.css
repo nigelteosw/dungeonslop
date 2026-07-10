@@ -214,7 +214,7 @@ button:focus-visible { box-shadow: 0 0 16px -4px var(--c-cyan); }
 .unit-layer { position:absolute; z-index:3; inset:0; pointer-events:none; display:block; }
 .unit-layer i, .crew-strip i { width:25px; height:25px; display:grid; place-items:center; border-radius:50%; background:var(--c-cyan-dim); color:white; font-style:normal; font-weight:900; font-family: var(--font-display); }
 .unit-layer i { position:absolute; transform:translate(-50%,-50%); transition:left .18s linear,top .18s linear; }
-.crew-unit { position:absolute; z-index:4; transform:translate(-50%,-50%); }
+.crew-unit { position:absolute; z-index:4; transform:translate(-50%,-50%); transition:left .3s ease-out,top .3s ease-out; }
 .crew-unit i { position:relative; transform:none; }
 .interaction-meter { position:absolute; top:29px; left:50%; width:38px; height:5px; transform:translateX(-50%); overflow:visible; border:1px solid #1e343a; background:#091317; box-shadow:0 1px 3px #000; }
 .interaction-meter b { display:block; height:100%; background:var(--c-amber); box-shadow:0 0 7px #e8a23c; transition:width .35s linear; }
