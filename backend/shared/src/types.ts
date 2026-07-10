@@ -94,7 +94,6 @@ export interface CrewState {
   incapacitated: boolean;
   bleedoutTicks: number;
   abilityCooldownTicks: number;
-  carryingItemId?: string;
   extinguishingFireId?: string;
   interaction?: CrewInteraction;
   pendingCommand?: ShipCommand;

@@ -419,6 +419,16 @@ test("a weapon hit reduces the target room's integrity", () => {
   expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
 });
 
+test("repairing a system also restores some of its room's integrity", () => {
+  let run = encounter("engineer", "engineering");
+  run.ship.rooms.engineering!.integrity = 50;
+  run.ship.systems.reactor.health = 2;
+  run = applyShipCommand(run, { kind: "repair", crewId: "c0", systemId: "reactor" });
+  run = completeInteraction(run);
+  expect(run.ship.rooms.engineering?.integrity).toBe(62);
+  expect(run.ship.systems.reactor.health).toBe(4);
+});
+
 test("the enemy's first hull hit scripts a combined fire and breach while the player's weapon is still charging", () => {
   let run = encounter("pilot");
   run.ship.shields = 0;

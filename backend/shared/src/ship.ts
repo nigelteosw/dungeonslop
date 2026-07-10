@@ -25,10 +25,10 @@ const SYSTEM_ROOMS: Record<SystemId, string> = {
 
 const ROOM_MAX_INTEGRITY = 100;
 const HIT_INTEGRITY_DAMAGE = 25;
+const ROOM_REPAIR_AMOUNT = 12;
 const FIRE_OXY_DRAIN_PER_TOKEN = 2;
 const FIRE_INTEGRITY_DAMAGE_PER_TOKEN = 1;
 const FIRE_CREW_DAMAGE_PER_TOKEN = 1;
-const STEP_TICKS = 5;
 const INTERACTION_TICKS = 5;
 const FIRE_EXTINGUISH_TICKS: Record<"small" | "medium" | "large", number> = { small: 3, medium: 6, large: 9 };
 const FIRE_GROW_TICKS = { medium: 15, large: 30 };
@@ -418,6 +418,8 @@ export function applyShipCommand(state: RunState, command: ShipCommand, resolveI
     if (system.roomId !== crew.roomId) throw new Error("crew member is not at that system");
     const amount = crew.role === "engineer" ? 2 : 1;
     system.health = Math.min(system.maxHealth, system.health + amount);
+    const repairedRoom = next.ship.rooms[system.roomId];
+    if (repairedRoom) repairedRoom.integrity = Math.min(repairedRoom.maxIntegrity, repairedRoom.integrity + ROOM_REPAIR_AMOUNT);
     return next;
   }
 
