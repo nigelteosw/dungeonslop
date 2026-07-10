@@ -215,9 +215,7 @@ test("a weapon hit reduces the target room's integrity", () => {
   let run = encounter("pilot");
   run.enemy!.weaponChargeTicks = run.enemy!.weaponChargeMaxTicks - 1;
   run.ship.shields = 0;
-  const before = { ...run.ship.rooms.bridge! };
   run = stepShipSimulation(run, () => 0.99);
-  const hitRoom = Object.values(run.ship.rooms).find((room, index) => room.integrity < Object.values(before as never)[index]);
   expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
 });
 
