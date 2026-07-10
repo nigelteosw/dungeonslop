@@ -1,5 +1,5 @@
 import { ArraySchema, MapSchema, Schema, type } from "@colyseus/schema";
-import type { BoarderState, CrewState, RunState, ShipDoor, ShipRoomState, ShipSystemState } from "shared";
+import type { BoarderState, CrewState, FireToken, RunState, ShipDoor, ShipRoomState, ShipSystemState } from "shared";
 import type { LobbyPlayer, SessionSnapshot } from "./session";
 import { projectShipSnapshot } from "./snapshot";
 
@@ -43,7 +43,6 @@ export class ShipRoomSchema extends Schema {
   @type("number") w = 0;
   @type("number") h = 0;
   @type("number") oxygen = 100;
-  @type("number") fire = 0;
   @type("boolean") breached = false;
   @type("number") integrity = 0;
   @type("number") maxIntegrity = 0;
@@ -104,6 +103,20 @@ export class BoarderSchema extends Schema {
   }
 }
 
+export class FireSchema extends Schema {
+  @type("string") id = "";
+  @type("string") roomId = "";
+  @type("number") x = 0;
+  @type("number") y = 0;
+  @type("number") stepsDone = 0;
+  @type("number") channelTicks = 0;
+
+  constructor(fire?: FireToken) {
+    super();
+    if (fire) Object.assign(this, fire);
+  }
+}
+
 export class DungeonState extends Schema {
   @type("string") status = "lobby";
   @type([PlayerSchema]) players = new ArraySchema<PlayerSchema>();
@@ -112,6 +125,7 @@ export class DungeonState extends Schema {
   @type({ map: ShipDoorSchema }) shipDoors = new MapSchema<ShipDoorSchema>();
   @type({ map: ShipSystemSchema }) shipSystems = new MapSchema<ShipSystemSchema>();
   @type({ map: BoarderSchema }) boarders = new MapSchema<BoarderSchema>();
+  @type({ map: FireSchema }) fires = new MapSchema<FireSchema>();
   @type("number") tick = 0;
   @type("number") sectorIndex = 0;
   @type("number") nodeIndex = 0;
@@ -145,6 +159,7 @@ export class DungeonState extends Schema {
     this.shipDoors.clear();
     this.shipSystems.clear();
     this.boarders.clear();
+    this.fires.clear();
     this.voteOptions.clear();
     this.votes.clear();
     this.installedUpgrades.clear();
@@ -179,5 +194,6 @@ export class DungeonState extends Schema {
     for (const door of shipSnapshot.doors) this.shipDoors.set(door.id, new ShipDoorSchema(door));
     for (const system of Object.values(run.ship.systems)) this.shipSystems.set(system.id, new ShipSystemSchema(system));
     for (const boarder of Object.values(run.boarders)) this.boarders.set(boarder.id, new BoarderSchema(boarder));
+    for (const fire of Object.values(run.ship.fires)) this.fires.set(fire.id, new FireSchema(fire));
   }
 }

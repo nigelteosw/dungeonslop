@@ -77,3 +77,10 @@ test("expanded event and upgrade effects persist into encounters", () => {
   run = castVote(run, "s0", "auto-turret");
   expect(run.installedUpgrades).toContain("auto-turret");
 });
+
+test("purge buoy event ignites the oxygen room", () => {
+  let run = createRun("seed", [createCrew("c0", "s0", "Ada", "medic")]);
+  run = castVote(run, "s0", "quarantine-buoy");
+  run = castVote(run, "s0", "purge-buoy");
+  expect(Object.values(run.ship.fires).some((fire) => fire.roomId === "oxygen")).toBe(true);
+});

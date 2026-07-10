@@ -84,7 +84,7 @@ test("breach drains oxygen and low oxygen incapacitates crew deterministically",
 
 test("same state and rng produce the same tick", () => {
   const run = encounter("medic");
-  run.ship.rooms.bridge!.fire = 1;
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
   expect(stepShipSimulation(run, () => 0.9)).toEqual(stepShipSimulation(run, () => 0.9));
 });
 
@@ -127,10 +127,12 @@ test("each role ability creates a distinct authoritative effect", () => {
 
   let engineer = encounter("engineer", "engineering");
   engineer.ship.systems.reactor.health = 1;
-  engineer.ship.rooms.engineering!.fire = 2;
+  const engRoom = engineer.ship.rooms.engineering!;
+  engineer.ship.fires.f0 = { id: "f0", roomId: "engineering", x: engRoom.x, y: engRoom.y, stepsDone: 0, channelTicks: 0 };
+  engineer.ship.fires.f1 = { id: "f1", roomId: "engineering", x: engRoom.x + 1, y: engRoom.y, stepsDone: 0, channelTicks: 0 };
   engineer = applyShipCommand(engineer, { kind: "useAbility", crewId: "c0" });
   expect(engineer.ship.systems.reactor.health).toBe(3);
-  expect(engineer.ship.rooms.engineering?.fire).toBe(1);
+  expect(Object.values(engineer.ship.fires).filter((fire) => fire.roomId === "engineering")).toHaveLength(1);
 
   let gunner = encounter("gunner");
   gunner.enemy!.shields = 0;
@@ -144,6 +146,13 @@ test("each role ability creates a distinct authoritative effect", () => {
   expect(medic.crew.c1?.health).toBe(50);
   expect(medic.crew.c0?.abilityCooldownTicks).toBe(32);
   expect(() => applyShipCommand(medic, { kind: "useAbility", crewId: "c0" })).toThrow("cooling down");
+});
+
+test("extinguish removes the targeted fire token", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
+  expect(run.ship.fires.f0).toBeUndefined();
 });
 
 test("a crew member can open a closed interior door from either side", () => {

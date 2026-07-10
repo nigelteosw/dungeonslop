@@ -24,6 +24,9 @@ const SYSTEM_ROOMS: Record<SystemId, string> = {
 
 const ROOM_MAX_INTEGRITY = 4;
 const HIT_INTEGRITY_DAMAGE = 1;
+const FIRE_OXY_DRAIN_PER_TOKEN = 2;
+const FIRE_INTEGRITY_DAMAGE_PER_TOKEN = 1;
+const FIRE_CREW_DAMAGE_PER_TOKEN = 2;
 
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
@@ -95,10 +98,40 @@ function ventRoom(next: RunState, roomId: string): void {
   const room = next.ship.rooms[roomId];
   if (!room) return;
   room.oxygen = 0;
-  room.fire = 0;
+  for (const fireId of Object.keys(next.ship.fires)) {
+    if (next.ship.fires[fireId]?.roomId === roomId) delete next.ship.fires[fireId];
+  }
   for (const crew of Object.values(next.crew)) {
     if (crew.roomId === roomId) delete next.crew[crew.id];
   }
+}
+
+function igniteRandomTile(ship: ShipState, roomId: string, rng: Rng, tick: number): void {
+  const room = ship.rooms[roomId];
+  if (!room) return;
+  for (let attempt = 0; attempt < room.w * room.h; attempt += 1) {
+    const x = room.x + Math.floor(rng() * room.w);
+    const y = room.y + Math.floor(rng() * room.h);
+    const occupied = Object.values(ship.fires).some((fire) => fire.roomId === roomId && fire.x === x && fire.y === y);
+    if (occupied) continue;
+    const id = `fire-${roomId}-${x}-${y}-${tick}`;
+    ship.fires[id] = { id, roomId, x, y, stepsDone: 0, channelTicks: 0 };
+    return;
+  }
+}
+
+function extinguishOneToken(ship: ShipState, roomId: string): void {
+  const target = Object.values(ship.fires).find((fire) => fire.roomId === roomId);
+  if (target) delete ship.fires[target.id];
+}
+
+export function igniteRoomOrigin(ship: ShipState, roomId: string): void {
+  const room = ship.rooms[roomId];
+  if (!room) return;
+  const occupied = Object.values(ship.fires).some((fire) => fire.roomId === roomId && fire.x === room.x && fire.y === room.y);
+  if (occupied) return;
+  const id = `fire-${roomId}-${room.x}-${room.y}-vote`;
+  ship.fires[id] = { id, roomId, x: room.x, y: room.y, stepsDone: 0, channelTicks: 0 };
 }
 
 export function createShip(layoutId = "balanced"): ShipState {
@@ -107,7 +140,7 @@ export function createShip(layoutId = "balanced"): ShipState {
   const rooms = Object.fromEntries(SHIP_ROOM_IDS.map((id) => {
     const bounds = layout.rooms[id];
     if (!bounds) throw new Error(`room ${id} missing from ship layout`);
-    return [id, { id, ...bounds, oxygen: 100, fire: 0, breached: false, integrity: ROOM_MAX_INTEGRITY, maxIntegrity: ROOM_MAX_INTEGRITY, destroyed: false }];
+    return [id, { id, ...bounds, oxygen: 100, breached: false, integrity: ROOM_MAX_INTEGRITY, maxIntegrity: ROOM_MAX_INTEGRITY, destroyed: false }];
   }));
   const doors = buildDoors(layoutId, layout, rooms);
   const systems = Object.fromEntries(
@@ -116,7 +149,7 @@ export function createShip(layoutId = "balanced"): ShipState {
       { id, roomId, health: 4, maxHealth: 4, power: id === "reactor" ? 0 : 1, maxPower: id === "reactor" ? 0 : 3 },
     ]),
   ) as ShipState["systems"];
-  return { layoutId, hull: 50, maxHull: 50, shields: 2, maxShields: 3, scrap: 0, reactorCapacity: 5, rooms, doors, systems };
+  return { layoutId, hull: 50, maxHull: 50, shields: 2, maxShields: 3, scrap: 0, reactorCapacity: 5, rooms, doors, fires: {}, systems };
 }
 
 function roomCenter(layoutId: string, roomId: string): { x: number; y: number } {
@@ -283,7 +316,9 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
   const room = next.ship.rooms[crew.roomId];
   if (!room) throw new Error("crew member is in an unknown room");
   if (command.kind === "extinguish") {
-    room.fire = Math.max(0, room.fire - 1);
+    const fire = next.ship.fires[command.fireId];
+    if (!fire || fire.roomId !== crew.roomId) throw new Error("no fire there to extinguish");
+    delete next.ship.fires[fire.id];
     return next;
   }
   if (command.kind === "sealBreach") {
@@ -308,7 +343,7 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
       const system = Object.values(next.ship.systems).find((candidate) => candidate.roomId === crew.roomId);
       if (!system) throw new Error("engineer ability requires a system room");
       system.health = Math.min(system.maxHealth, system.health + 2);
-      room.fire = Math.max(0, room.fire - 1);
+      extinguishOneToken(next.ship, crew.roomId);
     } else if (crew.role === "gunner") {
       if (!next.enemy) throw new Error("no hostile target");
       if (next.enemy.shields > 0) next.enemy.shields -= 1;
@@ -341,12 +376,10 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     const thinAir = next.slopEffectId === "thin-air";
     if (room.breached) room.oxygen = Math.max(0, room.oxygen - (thinAir ? 4 : 3));
     else if (next.ship.systems.oxygen.health > 0 && next.ship.systems.oxygen.power > 0) room.oxygen = Math.min(100, room.oxygen + (thinAir ? 1 : 2));
-    if (room.fire > 0) {
-      room.oxygen = Math.max(0, room.oxygen - room.fire);
-      if (rng() < 0.0125) {
-        const targetId = adjacentRooms(next.ship, room.id).find((id) => next.ship.rooms[id]?.fire === 0);
-        if (targetId && next.ship.rooms[targetId]) next.ship.rooms[targetId].fire = 1;
-      }
+    const roomFireCount = Object.values(next.ship.fires).filter((fire) => fire.roomId === room.id).length;
+    if (roomFireCount > 0) {
+      room.oxygen = Math.max(0, room.oxygen - FIRE_OXY_DRAIN_PER_TOKEN * roomFireCount);
+      room.integrity = Math.max(0, room.integrity - FIRE_INTEGRITY_DAMAGE_PER_TOKEN * roomFireCount);
     }
   }
 
@@ -370,7 +403,8 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     }
     const room = next.ship.rooms[crew.roomId];
     const damage = (room?.oxygen ?? 0) <= 10 ? 4 : 0;
-    const fireDamage = (room?.fire ?? 0) * 2;
+    const roomFireCount = room ? Object.values(next.ship.fires).filter((fire) => fire.roomId === room.id).length : 0;
+    const fireDamage = roomFireCount * FIRE_CREW_DAMAGE_PER_TOKEN;
     crew.health = Math.max(0, crew.health - damage - fireDamage);
     if (crew.health === 0) {
       crew.incapacitated = true;
@@ -391,7 +425,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     if (weapons.health > 0 && weapons.power > 0 && weaponCadence > 0 && next.tick % weaponCadence === 0) {
       if (enemy.shields > 0) enemy.shields -= 1;
       else enemy.hull = Math.max(0, enemy.hull - (next.slopEffectId === "volatile-weapons" ? 3 : 2));
-      if (next.slopEffectId === "volatile-weapons" && rng() < 0.2) next.ship.rooms.weapons!.fire = 1;
+      if (next.slopEffectId === "volatile-weapons" && rng() < 0.2) igniteRandomTile(next.ship, "weapons", rng, next.tick);
     }
 
     enemy.weaponChargeTicks += 1;
@@ -409,7 +443,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
           const room = next.ship.rooms[system.roomId];
           if (room) {
             room.integrity = Math.max(0, room.integrity - HIT_INTEGRITY_DAMAGE);
-            if (rng() < 0.45) room.fire = Math.max(1, room.fire);
+            if (rng() < 0.45) igniteRandomTile(next.ship, room.id, rng, next.tick);
             else room.breached = true;
           }
         }
@@ -452,14 +486,14 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
 
   if (next.installedUpgrades.includes("medbay-foam") && next.tick % 4 === 0) {
     const medbay = next.ship.rooms.medbay;
-    if (medbay) medbay.fire = Math.max(0, medbay.fire - 1);
+    if (medbay) extinguishOneToken(next.ship, medbay.id);
     for (const crew of Object.values(next.crew).filter((member) => member.roomId === "medbay" && !member.incapacitated)) {
       crew.health = Math.min(crew.maxHealth, crew.health + 3);
     }
   }
 
   if (next.slopEffectId === "hot-reactor-summer" && next.tick % 20 === 0 && rng() < 0.35) {
-    next.ship.rooms.engineering!.fire = Math.max(1, next.ship.rooms.engineering!.fire);
+    igniteRandomTile(next.ship, "engineering", rng, next.tick);
   }
 
   if (next.ship.hull <= 0 || Object.values(next.crew).every((crew) => crew.incapacitated && crew.bleedoutTicks === 0)) {

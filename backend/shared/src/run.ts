@@ -1,6 +1,6 @@
 import type { EnemyState, RunState, VoteState } from "./types";
 import type { Rng } from "./rng";
-import { applyShipLayout, stepShipSimulation } from "./ship";
+import { applyShipLayout, igniteRoomOrigin, stepShipSimulation } from "./ship";
 
 export const MAP_NODES: Record<string, { name: string; description: string; kind: "combat" | "event"; enemy?: Omit<EnemyState, "weaponChargeTicks"> }> = {
   "scrap-raider": { name: "Scrap Raider", description: "Balanced weapons. Predictably hostile.", kind: "combat", enemy: { id: "scrap-raider", hull: 18, maxHull: 18, shields: 1, weaponChargeMaxTicks: 32 } },
@@ -108,7 +108,7 @@ function resolveVote(state: RunState): RunState {
       next.ship.rooms.oxygen!.breached = true;
     } else if (winner === "purge-buoy") {
       next.ship.scrap += 4;
-      next.ship.rooms.oxygen!.fire = 1;
+      igniteRoomOrigin(next.ship, "oxygen");
     } else if (winner === "open-buoy") {
       next.ship.scrap += 12;
       next.boarders.eventBoarder = { id: "eventBoarder", roomId: "medbay", health: 60, targetRoomId: "engineering" };
@@ -118,7 +118,7 @@ function resolveVote(state: RunState): RunState {
     } else if (winner === "cross-picket-line") {
       next.ship.scrap += 6;
       next.ship.rooms.engineering!.breached = true;
-      next.ship.rooms.engineering!.fire = 1;
+      igniteRoomOrigin(next.ship, "engineering");
     } else {
       throw new Error("unknown event choice");
     }

@@ -43,11 +43,19 @@ export interface ShipRoomState {
   w: number;
   h: number;
   oxygen: number;
-  fire: number;
   breached: boolean;
   integrity: number;
   maxIntegrity: number;
   destroyed: boolean;
+}
+
+export interface FireToken {
+  id: string;
+  roomId: string;
+  x: number;
+  y: number;
+  stepsDone: number;
+  channelTicks: number;
 }
 
 export interface ShipState {
@@ -60,6 +68,7 @@ export interface ShipState {
   reactorCapacity: number;
   rooms: Record<string, ShipRoomState>;
   doors: Record<string, ShipDoor>;
+  fires: Record<string, FireToken>;
   systems: Record<SystemId, ShipSystemState>;
 }
 
@@ -126,7 +135,7 @@ export type ShipCommand =
   | { kind: "operate"; crewId: string; systemId: SystemId }
   | { kind: "repair"; crewId: string; systemId: SystemId }
   | { kind: "setDoorState"; crewId: string; doorId: string; state: DoorState }
-  | { kind: "extinguish"; crewId: string }
+  | { kind: "extinguish"; crewId: string; fireId: string }
   | { kind: "sealBreach"; crewId: string }
   | { kind: "attackBoarder"; crewId: string; boarderId: string }
   | { kind: "useAbility"; crewId: string }
