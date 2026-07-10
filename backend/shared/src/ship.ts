@@ -88,6 +88,16 @@ function buildDoors(layoutId: string, layout: ShipLayoutDef, rooms: Record<strin
   return Object.fromEntries([...interiorDoors, ...hullVents].map((door) => [door.id, door]));
 }
 
+function ventRoom(next: RunState, roomId: string): void {
+  const room = next.ship.rooms[roomId];
+  if (!room) return;
+  room.oxygen = 0;
+  room.fire = 0;
+  for (const crew of Object.values(next.crew)) {
+    if (crew.roomId === roomId) delete next.crew[crew.id];
+  }
+}
+
 export function createShip(layoutId = "balanced"): ShipState {
   const layout = SHIP_LAYOUTS[layoutId];
   if (!layout) throw new Error("unknown ship layout");
@@ -263,6 +273,7 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
       if (!atDoor) throw new Error("crew member is not at that door");
     }
     door.state = command.state;
+    if (door.kind === "hull" && command.state === "open") ventRoom(next, door.roomA);
     return next;
   }
 

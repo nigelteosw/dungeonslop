@@ -173,3 +173,15 @@ test("bridge operator controls any door or hull vent ship-wide", () => {
   const relocked = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "locked" });
   expect(relocked.ship.doors["bridge--weapons"]?.state).toBe("locked");
 });
+
+test("opening a hull vent kills anyone inside and empties the room's oxygen", () => {
+  let run = encounter("pilot", "bridge");
+  run.crew.c1 = createCrew("c1", "s1", "Riko", "engineer", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "helm" });
+  const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull" && door.roomA === "weapons")!.id;
+  run.ship.rooms.weapons!.oxygen = 90;
+  const vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  expect(vented.ship.rooms.weapons?.oxygen).toBe(0);
+  expect(vented.crew.c1).toBeUndefined();
+  expect(vented.crew.c0).toBeDefined();
+});
