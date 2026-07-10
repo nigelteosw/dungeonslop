@@ -9,6 +9,7 @@ import type {
   ShipDoor,
   ShipState,
   SystemId,
+  WeaponTarget,
 } from "./types";
 import type { Rng } from "./rng";
 
@@ -22,13 +23,15 @@ const SYSTEM_ROOMS: Record<SystemId, string> = {
   oxygen: "oxygen",
 };
 
-const ROOM_MAX_INTEGRITY = 4;
-const HIT_INTEGRITY_DAMAGE = 1;
+const ROOM_MAX_INTEGRITY = 100;
+const HIT_INTEGRITY_DAMAGE = 25;
 const FIRE_OXY_DRAIN_PER_TOKEN = 2;
 const FIRE_INTEGRITY_DAMAGE_PER_TOKEN = 1;
-const FIRE_CREW_DAMAGE_PER_TOKEN = 2;
+const FIRE_CREW_DAMAGE_PER_TOKEN = 1;
 const STEP_TICKS = 5;
-const STEPS_TO_EXTINGUISH = 3;
+const INTERACTION_TICKS = 5;
+const FIRE_EXTINGUISH_TICKS: Record<"small" | "medium" | "large", number> = { small: 3, medium: 6, large: 9 };
+const FIRE_GROW_TICKS = { medium: 15, large: 30 };
 const FIRE_SPREAD_CHANCE = 0.0125;
 const SPREAD_SIDES: DoorSide[] = ["e", "n", "s", "w"];
 const OXY_DRAIN_PER_CREW = 1;
@@ -136,7 +139,7 @@ function igniteRandomTile(ship: ShipState, roomId: string, rng: Rng, tick: numbe
     const occupied = Object.values(ship.fires).some((fire) => fire.roomId === roomId && fire.x === x && fire.y === y);
     if (occupied) continue;
     const id = `fire-${roomId}-${x}-${y}-${tick}`;
-    ship.fires[id] = { id, roomId, x, y, stepsDone: 0, channelTicks: 0 };
+    ship.fires[id] = { id, roomId, x, y, size: "small", ageTicks: 0, stepsDone: 0, channelTicks: 0 };
     return;
   }
 }
@@ -152,7 +155,7 @@ export function igniteRoomOrigin(ship: ShipState, roomId: string): void {
   const occupied = Object.values(ship.fires).some((fire) => fire.roomId === roomId && fire.x === room.x && fire.y === room.y);
   if (occupied) return;
   const id = `fire-${roomId}-${room.x}-${room.y}-vote`;
-  ship.fires[id] = { id, roomId, x: room.x, y: room.y, stepsDone: 0, channelTicks: 0 };
+  ship.fires[id] = { id, roomId, x: room.x, y: room.y, size: "small", ageTicks: 0, stepsDone: 0, channelTicks: 0 };
 }
 
 export function createShip(layoutId = "balanced"): ShipState {
@@ -170,7 +173,10 @@ export function createShip(layoutId = "balanced"): ShipState {
       { id, roomId, health: 4, maxHealth: 4, power: id === "reactor" ? 0 : 1, maxPower: id === "reactor" ? 0 : 3 },
     ]),
   ) as ShipState["systems"];
-  return { layoutId, hull: 50, maxHull: 50, shields: 2, maxShields: 3, scrap: 0, reactorCapacity: 5, rooms, doors, fires: {}, systems };
+  return {
+    layoutId, hull: 50, maxHull: 50, shields: 2, maxShields: 3, scrap: 0, reactorCapacity: 5,
+    weaponChargeTicks: 0, weaponChargeMaxTicks: 12, weaponTarget: "shields", rooms, doors, fires: {}, systems,
+  };
 }
 
 function roomCenter(layoutId: string, roomId: string): { x: number; y: number } {
@@ -274,10 +280,84 @@ function activeCrew(state: RunState, crewId: string): CrewState {
   return crew;
 }
 
-export function applyShipCommand(state: RunState, command: ShipCommand): RunState {
+function functionalPowerLimit(system: ShipState["systems"][SystemId]): number {
+  return Math.max(0, Math.min(system.maxPower, system.health));
+}
+
+function allocatedPower(ship: ShipState, replacement?: { systemId: SystemId; power: number }): number {
+  return Object.values(ship.systems).reduce((total, system) => {
+    if (system.id === "reactor") return total;
+    return total + (replacement?.systemId === system.id ? replacement.power : system.power);
+  }, 0);
+}
+
+function normalizeSystemPower(ship: ShipState): void {
+  for (const system of Object.values(ship.systems)) {
+    if (system.id === "reactor") {
+      system.power = 0;
+      continue;
+    }
+    system.power = Math.min(system.power, functionalPowerLimit(system));
+  }
+}
+
+function requireWeaponOperator(next: RunState, crewId: string): void {
+  const crew = next.crew[crewId];
+  const weapons = next.ship.systems.weapons;
+  if (!crew || crew.roomId !== weapons.roomId || weapons.operatorCrewId !== crew.id) {
+    throw new Error("only the weapons operator can control the volley");
+  }
+  if (weapons.health <= 0 || weapons.power <= 0) throw new Error("weapons are offline");
+}
+
+function resolvePlayerVolley(next: RunState): void {
+  const enemy = next.enemy;
+  if (!enemy) throw new Error("no hostile target");
+  const target = next.ship.weaponTarget;
+  if (enemy.shields > 0) {
+    enemy.shields = Math.max(0, enemy.shields - (target === "shields" ? 2 : 1));
+  } else {
+    const damage = target === "core" ? 3 : target === "weapons" ? 1 : 2;
+    enemy.hull = Math.max(0, enemy.hull - damage);
+    if (target === "weapons") enemy.weaponChargeTicks = Math.max(0, enemy.weaponChargeTicks - 8);
+    if (target === "helm") enemy.weaponChargeTicks = Math.max(0, enemy.weaponChargeTicks - 3);
+  }
+  next.ship.weaponChargeTicks = 0;
+  if (enemy.hull === 0) {
+    next.status = "victory";
+    next.objectiveText = "Hostile ship disabled";
+  }
+}
+
+function fireSize(fire: { size?: "small" | "medium" | "large" }): "small" | "medium" | "large" {
+  return fire.size ?? "small";
+}
+
+function interactionDuration(state: RunState, command: ShipCommand): number {
+  return command.kind === "extinguish" ? FIRE_EXTINGUISH_TICKS[fireSize(state.ship.fires[command.fireId] ?? {})] : INTERACTION_TICKS;
+}
+
+export function applyShipCommand(state: RunState, command: ShipCommand, resolveInteraction = false): RunState {
   if (state.status !== "encounter") throw new Error("ship commands require an active encounter");
   const next = structuredClone(state);
   const crew = activeCrew(next, command.crewId);
+
+  if (crew.interaction) {
+    if (command.kind !== "move" && command.kind !== "moveVector") throw new Error("crew member is busy interacting");
+    crew.interaction = undefined;
+    crew.pendingCommand = undefined;
+    crew.extinguishingFireId = undefined;
+  }
+
+  if (!resolveInteraction && command.kind !== "move" && command.kind !== "moveVector" && command.kind !== "setPower" && command.kind !== "setWeaponTarget" && command.kind !== "fireWeapon") {
+    // Validate the action against the current authoritative state without applying
+    // its effects. Resolution revalidates after the interaction bar completes.
+    applyShipCommand(next, command, true);
+    crew.interaction = { kind: command.kind, ticksDone: 0, totalTicks: interactionDuration(next, command) };
+    crew.pendingCommand = command;
+    if (command.kind === "extinguish") crew.extinguishingFireId = command.fireId;
+    return next;
+  }
 
   if (command.kind !== "extinguish") crew.extinguishingFireId = undefined;
 
@@ -296,7 +376,13 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
     const deckY = crew.deckY + command.dy;
     const destinationRoom = roomAtDeckPosition(next.ship.layoutId, deckX, deckY);
     if (!destinationRoom) throw new Error("movement leaves the ship");
-    if (destinationRoom !== crew.roomId && !adjacentRooms(next.ship, crew.roomId).includes(destinationRoom)) throw new Error("no open door in that direction");
+    if (destinationRoom !== crew.roomId) {
+      const side = command.dx === 1 ? "e" : command.dx === -1 ? "w" : command.dy === 1 ? "s" : "n";
+      const door = interiorDoorAt(next.ship.doors, crew.deckX, crew.deckY, side);
+      const connectsRooms = door && (door.roomA === crew.roomId || door.roomB === crew.roomId)
+        && (door.roomA === destinationRoom || door.roomB === destinationRoom);
+      if (!connectsRooms || door.state !== "open") throw new Error("no open door in that direction");
+    }
     crew.deckX = deckX;
     crew.deckY = deckY;
     crew.roomId = destinationRoom;
@@ -318,6 +404,34 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
     if (system.roomId !== crew.roomId) throw new Error("crew member is not at that system");
     const amount = crew.role === "engineer" ? 2 : 1;
     system.health = Math.min(system.maxHealth, system.health + amount);
+    return next;
+  }
+
+  if (command.kind === "setPower") {
+    if (!Number.isInteger(command.power) || command.power < 0) throw new Error("power must be a non-negative whole number");
+    const reactor = next.ship.systems.reactor;
+    if (crew.roomId !== reactor.roomId || reactor.operatorCrewId !== crew.id) throw new Error("only an engineering operator can reroute power");
+    if (command.systemId === "reactor") throw new Error("reactor power cannot be allocated directly");
+    const system = next.ship.systems[command.systemId];
+    if (!system) throw new Error("unknown ship system");
+    if (command.power > functionalPowerLimit(system)) throw new Error("power exceeds functional system capacity");
+    if (allocatedPower(next.ship, { systemId: command.systemId, power: command.power }) > next.ship.reactorCapacity) {
+      throw new Error("reactor capacity exceeded");
+    }
+    system.power = command.power;
+    return next;
+  }
+
+  if (command.kind === "setWeaponTarget") {
+    requireWeaponOperator(next, crew.id);
+    next.ship.weaponTarget = command.target;
+    return next;
+  }
+
+  if (command.kind === "fireWeapon") {
+    requireWeaponOperator(next, crew.id);
+    if (next.ship.weaponChargeTicks < next.ship.weaponChargeMaxTicks) throw new Error("weapon is still charging");
+    resolvePlayerVolley(next);
     return next;
   }
 
@@ -383,6 +497,15 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
     return next;
   }
 
+  if (command.kind === "heal") {
+    if (crew.roomId !== "medbay") throw new Error("healing requires the medbay");
+    if (crew.health >= crew.maxHealth) throw new Error("crew member is already at full health");
+    const medbayCrew = Object.values(next.crew).filter((candidate) => candidate.roomId === "medbay" && !candidate.incapacitated);
+    const amount = medbayCrew.length >= 2 ? 20 : 10;
+    crew.health = Math.min(crew.maxHealth, crew.health + amount);
+    return next;
+  }
+
   const target = next.crew[command.targetCrewId];
   if (!target || target.roomId !== crew.roomId || !target.incapacitated) throw new Error("invalid revive target");
   target.incapacitated = false;
@@ -393,8 +516,12 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
 
 export function stepShipSimulation(state: RunState, rng: Rng): RunState {
   if (state.status !== "encounter") return structuredClone(state);
-  const next = structuredClone(state);
+  let next = structuredClone(state);
   next.tick += 1;
+
+  for (const crew of Object.values(next.crew)) {
+    if (crew.interaction && !crew.incapacitated) crew.interaction.ticksDone += 1;
+  }
 
   const occupancy = new Map<string, number>();
   for (const crew of Object.values(next.crew)) {
@@ -416,6 +543,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
       room.integrity = Math.max(0, room.integrity - FIRE_INTEGRITY_DAMAGE_PER_TOKEN * roomFireCount);
     }
   }
+  normalizeSystemPower(next.ship);
 
   const oxygenSystem = next.ship.systems.oxygen;
   const oxygenRoom = next.ship.rooms[oxygenSystem.roomId];
@@ -447,6 +575,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
       if (door.roomA === room.id || door.roomB === room.id) door.state = "locked";
     }
   }
+  normalizeSystemPower(next.ship);
 
   for (const [id, fire] of Object.entries(next.ship.fires)) {
     if ((next.ship.rooms[fire.roomId]?.oxygen ?? 0) <= 0) delete next.ship.fires[id];
@@ -469,7 +598,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     );
     if (alreadyBurning) continue;
     const id = `fire-${neighborRoomId}-${nx}-${ny}-${next.tick}`;
-    next.ship.fires[id] = { id, roomId: neighborRoomId, x: nx, y: ny, stepsDone: 0, channelTicks: 0 };
+    next.ship.fires[id] = { id, roomId: neighborRoomId, x: nx, y: ny, size: "small", ageTicks: 0, stepsDone: 0, channelTicks: 0 };
   }
 
   for (const fire of Object.values(next.ship.fires)) {
@@ -481,17 +610,34 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
       && Math.max(Math.abs(fire.x - channeler.deckX), Math.abs(fire.y - channeler.deckY)) <= 1;
     if (stillChanneling) {
       fire.channelTicks += 1;
-      if (fire.channelTicks >= STEP_TICKS) {
-        fire.stepsDone += 1;
-        fire.channelTicks = 0;
-      }
     } else {
       fire.stepsDone = 0;
       fire.channelTicks = 0;
+      fire.ageTicks = (fire.ageTicks ?? 0) + 1;
+      if (fire.ageTicks >= FIRE_GROW_TICKS.large) fire.size = "large";
+      else if (fire.ageTicks >= FIRE_GROW_TICKS.medium) fire.size = "medium";
     }
   }
   for (const [id, fire] of Object.entries(next.ship.fires)) {
-    if (fire.stepsDone >= STEPS_TO_EXTINGUISH) delete next.ship.fires[id];
+    if (fire.channelTicks >= FIRE_EXTINGUISH_TICKS[fireSize(fire)]) delete next.ship.fires[id];
+  }
+
+  for (const crewId of Object.keys(next.crew)) {
+    const crew = next.crew[crewId];
+    if (!crew?.interaction || crew.interaction.ticksDone < crew.interaction.totalTicks) continue;
+    const command = crew.pendingCommand;
+    const kind = crew.interaction.kind;
+    crew.interaction = undefined;
+    crew.pendingCommand = undefined;
+    crew.extinguishingFireId = undefined;
+    // Firefighting resolves through its existing three-step fire token channel.
+    if (kind === "extinguish" || !command) continue;
+    try {
+      next = applyShipCommand(next, command, true);
+    } catch {
+      // A target can disappear or a crew member can be incapacitated while the
+      // bar is filling. The authoritative action is then cancelled safely.
+    }
   }
 
   for (const crew of Object.values(next.crew)) {
@@ -514,16 +660,23 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     }
   }
 
+  const playerWeapons = next.ship.systems.weapons;
+  const weaponOperator = playerWeapons.operatorCrewId ? next.crew[playerWeapons.operatorCrewId] : undefined;
+  const autoTurret = next.installedUpgrades.includes("auto-turret") && !weaponOperator;
+  if (playerWeapons.health > 0 && playerWeapons.power > 0 && (weaponOperator || autoTurret)) {
+    const chargeRate = weaponOperator?.role === "gunner" ? 2 : 1;
+    next.ship.weaponChargeTicks = Math.min(next.ship.weaponChargeMaxTicks, next.ship.weaponChargeTicks + chargeRate);
+  } else {
+    next.ship.weaponChargeTicks = 0;
+  }
+
   const enemy = next.enemy;
   if (enemy) {
     if (next.tick === 20 && Object.keys(next.boarders).length === 0) {
       next.boarders.b0 = { id: "b0", roomId: "oxygen", health: 75, targetRoomId: "engineering" };
     }
-    const weapons = next.ship.systems.weapons;
-    const weaponCadence = weapons.operatorCrewId ? 8 : next.installedUpgrades.includes("auto-turret") ? 12 : 0;
-    if (weapons.health > 0 && weapons.power > 0 && weaponCadence > 0 && next.tick % weaponCadence === 0) {
-      if (enemy.shields > 0) enemy.shields -= 1;
-      else enemy.hull = Math.max(0, enemy.hull - (next.slopEffectId === "volatile-weapons" ? 3 : 2));
+    if (autoTurret && next.ship.weaponChargeTicks >= next.ship.weaponChargeMaxTicks) {
+      resolvePlayerVolley(next);
       if (next.slopEffectId === "volatile-weapons" && rng() < 0.2) igniteRandomTile(next.ship, "weapons", rng, next.tick);
     }
 
@@ -549,6 +702,8 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
       }
     }
 
+    normalizeSystemPower(next.ship);
+
     const shields = next.ship.systems.shields;
     if (shields.health > 0 && shields.power > 0 && shields.operatorCrewId && next.tick % 16 === 0) {
       next.ship.shields = Math.min(next.ship.maxShields, next.ship.shields + 1);
@@ -572,6 +727,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     const systemHere = Object.values(next.ship.systems).find((system) => system.roomId === boarder.roomId && system.health > 0);
     if (systemHere && next.tick % 4 === 0) {
       systemHere.health = Math.max(0, systemHere.health - 1);
+      normalizeSystemPower(next.ship);
       continue;
     }
     const boarderMoveCadence = next.installedUpgrades.includes("blast-doors") ? 8 : 4;

@@ -1,5 +1,6 @@
 export type CrewRole = 'pilot' | 'engineer' | 'gunner' | 'medic';
 export type SystemId = 'helm' | 'reactor' | 'weapons' | 'shields' | 'oxygen';
+export type WeaponTarget = 'shields' | 'weapons' | 'helm' | 'core';
 
 export interface LobbyPlayerLike {
   sessionId: string;
@@ -22,10 +23,49 @@ export interface CrewView {
   incapacitated: boolean;
   bleedoutTicks: number;
   abilityCooldownTicks: number;
+  interactionKind: string;
+  interactionTicks: number;
+  interactionTotalTicks: number;
 }
 
-export interface ShipRoomView { id: string; x: number; y: number; w: number; h: number; oxygen: number; fire: number; breached: boolean; }
-export interface ShipDoorView { id: string; a: string; b: string; open: boolean; locked: boolean; }
+export interface ShipRoomView {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  oxygen: number;
+  breached: boolean;
+  integrity: number;
+  maxIntegrity: number;
+  destroyed: boolean;
+}
+
+export type DoorSide = 'n' | 's' | 'e' | 'w';
+export type DoorKind = 'interior' | 'hull';
+export type DoorState = 'open' | 'closed' | 'locked';
+
+export interface ShipDoorView {
+  id: string;
+  x: number;
+  y: number;
+  side: DoorSide;
+  kind: DoorKind;
+  state: DoorState;
+  roomA: string;
+  roomB?: string;
+}
+
+export interface FireView {
+  id: string;
+  roomId: string;
+  x: number;
+  y: number;
+  size: 'small' | 'medium' | 'large';
+  ageTicks: number;
+  stepsDone: number;
+  channelTicks: number;
+}
 export interface BoarderView { id: string; roomId: string; health: number; targetRoomId: string; }
 export interface ShipSystemView {
   id: SystemId;
@@ -47,6 +87,7 @@ export interface DungeonStateLike {
   shipDoors: MapLike<ShipDoorView>;
   shipSystems: MapLike<ShipSystemView>;
   boarders: MapLike<BoarderView>;
+  fires: MapLike<FireView>;
   tick: number;
   sectorIndex: number;
   nodeIndex: number;
@@ -57,6 +98,9 @@ export interface DungeonStateLike {
   maxShields: number;
   scrap: number;
   reactorCapacity: number;
+  weaponChargeTicks: number;
+  weaponChargeMaxTicks: number;
+  weaponTarget: WeaponTarget;
   shipLayoutId: string;
   objectiveText: string;
   enemyHull: number;
@@ -84,6 +128,9 @@ export interface ShipViewState {
   maxShields: number;
   scrap: number;
   reactorCapacity: number;
+  weaponChargeTicks: number;
+  weaponChargeMaxTicks: number;
+  weaponTarget: WeaponTarget;
   shipLayoutId: string;
   objectiveText: string;
   enemyHull: number;
@@ -102,6 +149,7 @@ export interface ShipViewState {
   doors: Record<string, ShipDoorView>;
   systems: Record<string, ShipSystemView>;
   boarders: Record<string, BoarderView>;
+  fires: Record<string, FireView>;
 }
 
 export function toShipViewState(state: DungeonStateLike): ShipViewState {
@@ -110,12 +158,16 @@ export function toShipViewState(state: DungeonStateLike): ShipViewState {
   const doors: Record<string, ShipDoorView> = {};
   const systems: Record<string, ShipSystemView> = {};
   const boarders: Record<string, BoarderView> = {};
+  const fires: Record<string, FireView> = {};
   const votes: Record<string, string> = {};
   state.crew.forEach((member, id) => { crew[id] = { ...member }; });
   state.shipRooms.forEach((room, id) => { rooms[id] = { ...room }; });
-  state.shipDoors.forEach((door, id) => { doors[id] = { ...door }; });
+  state.shipDoors.forEach((door, id) => {
+    doors[id] = { ...door, roomB: door.roomB || undefined };
+  });
   state.shipSystems.forEach((system, id) => { systems[id] = { ...system }; });
   state.boarders.forEach((boarder, id) => { boarders[id] = { ...boarder }; });
+  state.fires.forEach((fire, id) => { fires[id] = { ...fire, size: fire.size ?? 'small', ageTicks: fire.ageTicks ?? 0 }; });
   state.votes.forEach((option, ownerId) => { votes[ownerId] = option; });
   return {
     status: state.status,
@@ -129,6 +181,9 @@ export function toShipViewState(state: DungeonStateLike): ShipViewState {
     maxShields: state.maxShields,
     scrap: state.scrap,
     reactorCapacity: state.reactorCapacity,
+    weaponChargeTicks: state.weaponChargeTicks,
+    weaponChargeMaxTicks: state.weaponChargeMaxTicks,
+    weaponTarget: state.weaponTarget,
     shipLayoutId: state.shipLayoutId,
     objectiveText: state.objectiveText,
     enemyHull: state.enemyHull,
@@ -147,6 +202,7 @@ export function toShipViewState(state: DungeonStateLike): ShipViewState {
     doors,
     systems,
     boarders,
+    fires,
   };
 }
 

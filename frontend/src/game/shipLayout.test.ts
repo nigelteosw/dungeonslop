@@ -7,8 +7,8 @@ const rooms = {
 };
 
 const doors = {
-  'engineering--shields': { id: 'engineering--shields', a: 'engineering', b: 'shields', open: true, locked: false },
-  'engineering--oxygen': { id: 'engineering--oxygen', a: 'engineering', b: 'oxygen', open: true, locked: false },
+  'engineering--shields': { id: 'engineering--shields', x: 3, y: 3, side: 'e' as const, kind: 'interior' as const, state: 'open' as const, roomA: 'engineering', roomB: 'shields' },
+  'engineering--oxygen': { id: 'engineering--oxygen', x: 3, y: 4, side: 'e' as const, kind: 'interior' as const, state: 'open' as const, roomA: 'engineering', roomB: 'oxygen' },
 };
 
 test('room presentation is layered onto authoritative geometry', () => {
@@ -19,14 +19,18 @@ test('reachable rooms respect authoritative door state', () => {
   expect(adjacentRoomIds('engineering', doors).sort()).toEqual(['oxygen', 'shields']);
   expect(adjacentRoomIds('engineering', {
     ...doors,
-    'engineering--shields': { ...doors['engineering--shields'], locked: true },
-    'engineering--oxygen': { ...doors['engineering--oxygen'], open: false },
+    'engineering--shields': { ...doors['engineering--shields'], state: 'locked' as const },
+    'engineering--oxygen': { ...doors['engineering--oxygen'], state: 'closed' as const },
   })).toEqual([]);
 });
 
-test('door markers are placed on the shared wall', () => {
-  expect(roomDoorLayouts(rooms, doors)).toEqual([
+test('door markers use authoritative tile anchors, including hull vents', () => {
+  expect(roomDoorLayouts({
+    ...doors,
+    'hull-engineering-2-3-w': { id: 'hull-engineering-2-3-w', x: 2, y: 3, side: 'w', kind: 'hull', state: 'locked', roomA: 'engineering' },
+  })).toEqual([
     { id: 'engineering--shields', orientation: 'vertical', x: 4, y: 3.5 },
     { id: 'engineering--oxygen', orientation: 'vertical', x: 4, y: 4.5 },
+    { id: 'hull-engineering-2-3-w', orientation: 'vertical', x: 2, y: 3.5 },
   ]);
 });

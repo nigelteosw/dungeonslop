@@ -29,10 +29,17 @@ export class CrewSchema extends Schema {
   @type("boolean") incapacitated = false;
   @type("number") bleedoutTicks = 0;
   @type("number") abilityCooldownTicks = 0;
+  @type("string") interactionKind = "";
+  @type("number") interactionTicks = 0;
+  @type("number") interactionTotalTicks = 0;
 
   constructor(crew?: CrewState) {
     super();
-    if (crew) Object.assign(this, crew);
+    if (!crew) return;
+    Object.assign(this, crew);
+    this.interactionKind = crew.interaction?.kind ?? "";
+    this.interactionTicks = crew.interaction?.ticksDone ?? 0;
+    this.interactionTotalTicks = crew.interaction?.totalTicks ?? 0;
   }
 }
 
@@ -108,6 +115,8 @@ export class FireSchema extends Schema {
   @type("string") roomId = "";
   @type("number") x = 0;
   @type("number") y = 0;
+  @type("string") size = "small";
+  @type("number") ageTicks = 0;
   @type("number") stepsDone = 0;
   @type("number") channelTicks = 0;
 
@@ -136,6 +145,9 @@ export class DungeonState extends Schema {
   @type("number") maxShields = 0;
   @type("number") scrap = 0;
   @type("number") reactorCapacity = 0;
+  @type("number") weaponChargeTicks = 0;
+  @type("number") weaponChargeMaxTicks = 0;
+  @type("string") weaponTarget = "shields";
   @type("string") shipLayoutId = "balanced";
   @type("string") objectiveText = "";
   @type("number") enemyHull = 0;
@@ -176,6 +188,9 @@ export class DungeonState extends Schema {
     this.maxShields = run.ship.maxShields;
     this.scrap = run.ship.scrap;
     this.reactorCapacity = run.ship.reactorCapacity;
+    this.weaponChargeTicks = run.ship.weaponChargeTicks;
+    this.weaponChargeMaxTicks = run.ship.weaponChargeMaxTicks;
+    this.weaponTarget = run.ship.weaponTarget;
     this.shipLayoutId = run.ship.layoutId;
     this.objectiveText = run.objectiveText ?? "";
     this.enemyHull = run.enemy?.hull ?? 0;

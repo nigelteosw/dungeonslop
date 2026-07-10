@@ -1,5 +1,5 @@
 import { Room, type Client } from "colyseus";
-import type { CrewRole, ShipCommand, SystemId } from "shared";
+import type { CrewRole, ShipCommand, SystemId, WeaponTarget } from "shared";
 import { DungeonState } from "../schema";
 import { GameSession } from "../session";
 
@@ -24,6 +24,13 @@ function parseCommand(message: unknown): ShipCommand {
   if ((kind === "operate" || kind === "repair") && typeof value.systemId === "string") {
     return { kind, crewId, systemId: value.systemId as SystemId };
   }
+  if (kind === "setPower" && typeof value.systemId === "string" && typeof value.power === "number" && Number.isInteger(value.power)) {
+    return { kind, crewId, systemId: value.systemId as SystemId, power: value.power };
+  }
+  if (kind === "setWeaponTarget" && typeof value.target === "string" && ["shields", "weapons", "helm", "core"].includes(value.target)) {
+    return { kind, crewId, target: value.target as WeaponTarget };
+  }
+  if (kind === "fireWeapon") return { kind, crewId };
   if (kind === "setDoorState" && typeof value.doorId === "string" && typeof value.state === "string" && ["open", "closed", "locked"].includes(value.state)) {
     return { kind, crewId, doorId: value.doorId, state: value.state as "open" | "closed" | "locked" };
   }
@@ -31,6 +38,7 @@ function parseCommand(message: unknown): ShipCommand {
   if (kind === "sealBreach") return { kind, crewId };
   if (kind === "attackBoarder" && typeof value.boarderId === "string") return { kind, crewId, boarderId: value.boarderId };
   if (kind === "useAbility") return { kind, crewId };
+  if (kind === "heal") return { kind, crewId };
   if (kind === "revive" && typeof value.targetCrewId === "string") return { kind, crewId, targetCrewId: value.targetCrewId };
   throw new Error("invalid ship command");
 }

@@ -9,6 +9,7 @@ import {
   type LobbyPlayerLike,
   type ShipViewState,
   type SystemId,
+  type WeaponTarget,
 } from './schemaAdapter';
 
 type Status = 'idle' | 'connecting' | 'lobby' | 'in-game' | 'error';
@@ -16,10 +17,16 @@ type Command =
   | { kind: 'move'; crewId: string; roomId: string }
   | { kind: 'moveVector'; crewId: string; dx: -1|0|1; dy: -1|0|1 }
   | { kind: 'operate' | 'repair'; crewId: string; systemId: SystemId }
-  | { kind: 'extinguish' | 'sealBreach'; crewId: string }
+  | { kind: 'setPower'; crewId: string; systemId: SystemId; power: number }
+  | { kind: 'setWeaponTarget'; crewId: string; target: WeaponTarget }
+  | { kind: 'fireWeapon'; crewId: string }
+  | { kind: 'setDoorState'; crewId: string; doorId: string; state: 'open' | 'closed' | 'locked' }
+  | { kind: 'extinguish'; crewId: string; fireId: string }
+  | { kind: 'sealBreach'; crewId: string }
   | { kind: 'attackBoarder'; crewId: string; boarderId: string }
   | { kind: 'useAbility'; crewId: string }
-  | { kind: 'revive'; crewId: string; targetCrewId: string };
+  | { kind: 'revive'; crewId: string; targetCrewId: string }
+  | { kind: 'heal'; crewId: string };
 
 export function useDungeonRoom() {
   const roomRef = useRef<Room<DungeonStateLike> | null>(null);

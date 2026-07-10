@@ -19,10 +19,13 @@ export interface RoomLayout extends RoomGeometry {
 
 export interface DoorLike {
   id: string;
-  a: string;
-  b: string;
-  open: boolean;
-  locked: boolean;
+  x: number;
+  y: number;
+  side: 'n' | 's' | 'e' | 'w';
+  kind: 'interior' | 'hull';
+  state: 'open' | 'closed' | 'locked';
+  roomA: string;
+  roomB?: string;
 }
 
 export interface DoorLayout {
@@ -50,37 +53,18 @@ export function roomLayouts(rooms: Record<string, RoomGeometry>): Record<string,
 
 export function adjacentRoomIds(roomId: string, doors: Record<string, DoorLike>): string[] {
   return Object.values(doors).flatMap((door) => {
-    if (!door.open || door.locked) return [];
-    if (door.a === roomId) return [door.b];
-    if (door.b === roomId) return [door.a];
+    if (door.kind !== 'interior' || door.state !== 'open' || !door.roomB) return [];
+    if (door.roomA === roomId) return [door.roomB];
+    if (door.roomB === roomId) return [door.roomA];
     return [];
   });
 }
 
-export function roomDoorLayouts(rooms: Record<string, RoomGeometry>, doors: Record<string, DoorLike>): DoorLayout[] {
+export function roomDoorLayouts(doors: Record<string, DoorLike>): DoorLayout[] {
   return Object.values(doors).map((door) => {
-    const a = rooms[door.a];
-    const b = rooms[door.b];
-    if (!a || !b) throw new Error(`Missing room for door ${door.id}`);
-
-    const verticalX = a.x + a.w === b.x ? b.x : b.x + b.w === a.x ? a.x : undefined;
-    if (verticalX !== undefined) {
-      const overlapStart = Math.max(a.y, b.y);
-      const overlapEnd = Math.min(a.y + a.h, b.y + b.h);
-      if (overlapEnd > overlapStart) {
-        return { id: door.id, orientation: 'vertical', x: verticalX, y: overlapStart + (overlapEnd - overlapStart) / 2 };
-      }
-    }
-
-    const horizontalY = a.y + a.h === b.y ? b.y : b.y + b.h === a.y ? a.y : undefined;
-    if (horizontalY !== undefined) {
-      const overlapStart = Math.max(a.x, b.x);
-      const overlapEnd = Math.min(a.x + a.w, b.x + b.w);
-      if (overlapEnd > overlapStart) {
-        return { id: door.id, orientation: 'horizontal', x: overlapStart + (overlapEnd - overlapStart) / 2, y: horizontalY };
-      }
-    }
-
-    throw new Error(`Connected rooms ${door.a} and ${door.b} do not share a wall`);
+    if (door.side === 'e') return { id: door.id, orientation: 'vertical', x: door.x + 1, y: door.y + .5 };
+    if (door.side === 'w') return { id: door.id, orientation: 'vertical', x: door.x, y: door.y + .5 };
+    if (door.side === 's') return { id: door.id, orientation: 'horizontal', x: door.x + .5, y: door.y + 1 };
+    return { id: door.id, orientation: 'horizontal', x: door.x + .5, y: door.y };
   });
 }

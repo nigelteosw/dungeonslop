@@ -34,7 +34,7 @@ export function useShipAudio(state: ShipViewState) {
   useEffect(() => {
     const current = {
       hull: state.hull,
-      fires: Object.values(state.rooms).reduce((total, room) => total + room.fire, 0),
+      fires: Object.keys(state.fires).length,
       boarders: Object.keys(state.boarders).length,
       status: state.status,
     };

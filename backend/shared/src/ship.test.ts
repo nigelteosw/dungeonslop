@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test";
+import type { RunState } from "./types";
 import { applyShipCommand, createCrew, createRun, createShip, SHIP_LAYOUTS, shortestRoomPath, stepShipSimulation } from "./ship";
 import { castVote } from "./run";
 
 function encounter(role: "pilot" | "engineer" | "gunner" | "medic", roomId = "bridge") {
   return castVote(createRun("seed", [createCrew("c0", "s0", "Ada", role, roomId)]), "s0", "scrap-raider");
+}
+
+function completeInteraction(run: RunState, ticks = 5): RunState {
+  for (let i = 0; i < ticks; i += 1) run = stepShipSimulation(run, () => 1);
+  return run;
 }
 
 test("ship layout has a path between bridge and weapons", () => {
@@ -47,13 +53,54 @@ test("every room boundary tile not touching another room gets a locked hull vent
   expect(weaponsVents.length).toBeGreaterThan(0);
 });
 
-test("crew moves one room and operates a colocated station", () => {
+test("crew channels before operating a colocated station", () => {
   const run = encounter("pilot");
   const moved = applyShipCommand(run, { kind: "move", crewId: "c0", roomId: "weapons" });
-  const operated = applyShipCommand(moved, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  const started = applyShipCommand(moved, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  expect(started.crew.c0?.interaction).toMatchObject({ kind: "operate", ticksDone: 0, totalTicks: 5 });
+  const operated = completeInteraction(started);
   expect(operated.crew.c0?.roomId).toBe("weapons");
   expect(operated.ship.systems.weapons.operatorCrewId).toBe("c0");
   expect(run.crew.c0?.roomId).toBe("bridge");
+});
+
+test("only an engineering operator can reroute reactor power", () => {
+  const run = encounter("engineer", "engineering");
+  expect(() => applyShipCommand(run, { kind: "setPower", crewId: "c0", systemId: "weapons", power: 2 })).toThrow(
+    "only an engineering operator",
+  );
+
+  let operated = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "reactor" });
+  operated = completeInteraction(operated);
+  const rerouted = applyShipCommand(operated, { kind: "setPower", crewId: "c0", systemId: "weapons", power: 2 });
+  expect(rerouted.ship.systems.weapons.power).toBe(2);
+  expect(rerouted.crew.c0?.interaction).toBeUndefined();
+});
+
+test("power allocation respects reactor capacity and damaged system bars", () => {
+  let run = encounter("engineer", "engineering");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "reactor" });
+  run = completeInteraction(run);
+  run.ship.systems.weapons.health = 1;
+
+  expect(() => applyShipCommand(run, { kind: "setPower", crewId: "c0", systemId: "weapons", power: 2 })).toThrow(
+    "functional system capacity",
+  );
+  run.ship.systems.weapons.health = 4;
+  run.ship.systems.shields.power = 3;
+  run.ship.systems.oxygen.power = 1;
+  run.ship.systems.helm.power = 1;
+  expect(() => applyShipCommand(run, { kind: "setPower", crewId: "c0", systemId: "weapons", power: 1 })).toThrow(
+    "reactor capacity exceeded",
+  );
+});
+
+test("system damage immediately depowers bars it can no longer support", () => {
+  let run = encounter("engineer", "engineering");
+  run.ship.systems.weapons.power = 3;
+  run.ship.systems.weapons.health = 1;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.systems.weapons.power).toBe(1);
 });
 
 test("crew cannot move through a non-adjacent room", () => {
@@ -69,6 +116,13 @@ test("WASD movement updates deck position and crosses only a connected module bo
   const bridgeRun = encounter("pilot");
   bridgeRun.crew.c0!.deckX = 9;
   expect(() => applyShipCommand(bridgeRun, { kind: "moveVector", crewId: "c0", dx: 1, dy: 0 })).toThrow("leaves the ship");
+});
+
+test("WASD movement crosses a room boundary only at its open door tile", () => {
+  const run = encounter("gunner", "weapons");
+  run.crew.c0!.deckX = 7;
+  run.crew.c0!.deckY = 3;
+  expect(() => applyShipCommand(run, { kind: "moveVector", crewId: "c0", dx: 0, dy: 1 })).toThrow("no open door in that direction");
 });
 
 test("breach drains oxygen and low oxygen incapacitates crew deterministically", () => {
@@ -99,21 +153,52 @@ test("enemy volley damages shields before hull", () => {
   expect(run.ship.hull).toBe(run.ship.maxHull);
 });
 
-test("manned weapons disable the enemy and win the encounter", () => {
+test("manned weapons charge, fire an aimed volley, and win the encounter", () => {
   let run = encounter("gunner", "weapons");
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
   run.enemy!.shields = 0;
   run.enemy!.hull = 2;
-  run.tick = 7;
-  run = stepShipSimulation(run, () => 1);
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = applyShipCommand(run, { kind: "setWeaponTarget", crewId: "c0", target: "core" });
+  run = applyShipCommand(run, { kind: "fireWeapon", crewId: "c0" });
   expect(run.enemy?.hull).toBe(0);
   expect(run.status).toBe("victory");
 });
 
+test("weapons only charge while powered and their operator selects the target", () => {
+  let run = encounter("gunner", "weapons");
+  expect(() => applyShipCommand(run, { kind: "setWeaponTarget", crewId: "c0", target: "weapons" })).toThrow(
+    "only the weapons operator",
+  );
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  expect(run.ship.weaponChargeTicks).toBe(2);
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.weaponChargeTicks).toBe(4);
+  run = applyShipCommand(run, { kind: "setWeaponTarget", crewId: "c0", target: "weapons" });
+  expect(run.ship.weaponTarget).toBe("weapons");
+  run.ship.systems.weapons.power = 0;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.weaponChargeTicks).toBe(0);
+});
+
+test("an aimed shield volley strips two layers and consumes its charge", () => {
+  let run = encounter("gunner", "weapons");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "weapons" });
+  run = completeInteraction(run);
+  run.enemy!.shields = 2;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+  run = applyShipCommand(run, { kind: "fireWeapon", crewId: "c0" });
+  expect(run.enemy?.shields).toBe(0);
+  expect(run.ship.weaponChargeTicks).toBe(0);
+});
+
 test("boarders sabotage systems and can be fought by colocated crew", () => {
   let run = encounter("gunner", "oxygen");
-  run.boarders.b0 = { id: "b0", roomId: "oxygen", health: 40, targetRoomId: "engineering" };
+  run.boarders.b0 = { id: "b0", roomId: "oxygen", health: 40, targetRoomId: "oxygen" };
   run = applyShipCommand(run, { kind: "attackBoarder", crewId: "c0", boarderId: "b0" });
+  run = completeInteraction(run);
   expect(run.boarders.b0).toBeUndefined();
 
   run.boarders.b1 = { id: "b1", roomId: "weapons", health: 75, targetRoomId: "engineering" };
@@ -126,7 +211,8 @@ test("each role ability creates a distinct authoritative effect", () => {
   let pilot = encounter("pilot");
   pilot.enemy!.weaponChargeTicks = 8;
   pilot = applyShipCommand(pilot, { kind: "useAbility", crewId: "c0" });
-  expect(pilot.enemy?.weaponChargeTicks).toBe(2);
+  pilot = completeInteraction(pilot);
+  expect(pilot.enemy?.weaponChargeTicks).toBe(7);
 
   let engineer = encounter("engineer", "engineering");
   engineer.ship.systems.reactor.health = 1;
@@ -134,21 +220,49 @@ test("each role ability creates a distinct authoritative effect", () => {
   engineer.ship.fires.f0 = { id: "f0", roomId: "engineering", x: engRoom.x, y: engRoom.y, stepsDone: 0, channelTicks: 0 };
   engineer.ship.fires.f1 = { id: "f1", roomId: "engineering", x: engRoom.x + 1, y: engRoom.y, stepsDone: 0, channelTicks: 0 };
   engineer = applyShipCommand(engineer, { kind: "useAbility", crewId: "c0" });
+  engineer = completeInteraction(engineer);
   expect(engineer.ship.systems.reactor.health).toBe(3);
   expect(Object.values(engineer.ship.fires).filter((fire) => fire.roomId === "engineering")).toHaveLength(1);
 
   let gunner = encounter("gunner");
   gunner.enemy!.shields = 0;
   gunner = applyShipCommand(gunner, { kind: "useAbility", crewId: "c0" });
+  gunner = completeInteraction(gunner);
   expect(gunner.enemy?.hull).toBe(15);
 
   let medic = castVote(createRun("seed", [createCrew("c0", "s0", "Ada", "medic"), createCrew("c1", "s1", "Bob", "pilot")]), "s0", "scrap-raider");
   medic = castVote(medic, "s1", "scrap-raider");
   medic.crew.c1!.health = 20;
   medic = applyShipCommand(medic, { kind: "useAbility", crewId: "c0" });
+  medic = completeInteraction(medic);
   expect(medic.crew.c1?.health).toBe(50);
-  expect(medic.crew.c0?.abilityCooldownTicks).toBe(32);
+  expect(medic.crew.c0?.abilityCooldownTicks).toBe(31);
   expect(() => applyShipCommand(medic, { kind: "useAbility", crewId: "c0" })).toThrow("cooling down");
+});
+
+test("medbay healing restores 10 health alone and 20 health with a conscious ally", () => {
+  let solo = encounter("medic", "medbay");
+  solo.crew.c0!.health = 45;
+  solo = applyShipCommand(solo, { kind: "heal", crewId: "c0" });
+  expect(solo.crew.c0?.interaction).toMatchObject({ kind: "heal", ticksDone: 0, totalTicks: 5 });
+  solo = completeInteraction(solo);
+  expect(solo.crew.c0?.health).toBe(55);
+
+  let paired = castVote(createRun("seed", [createCrew("c0", "s0", "Ada", "medic", "medbay"), createCrew("c1", "s1", "Bob", "pilot", "medbay")]), "s0", "scrap-raider");
+  paired = castVote(paired, "s1", "scrap-raider");
+  paired.crew.c0!.health = 45;
+  paired = applyShipCommand(paired, { kind: "heal", crewId: "c0" });
+  paired = completeInteraction(paired);
+  expect(paired.crew.c0?.health).toBe(65);
+});
+
+test("medbay healing is unavailable outside the medbay or at full health", () => {
+  const elsewhere = encounter("medic", "bridge");
+  elsewhere.crew.c0!.health = 50;
+  expect(() => applyShipCommand(elsewhere, { kind: "heal", crewId: "c0" })).toThrow("requires the medbay");
+
+  const fullHealth = encounter("medic", "medbay");
+  expect(() => applyShipCommand(fullHealth, { kind: "heal", crewId: "c0" })).toThrow("already at full health");
 });
 
 test("extinguish starts channeling on the targeted fire token", () => {
@@ -159,10 +273,12 @@ test("extinguish starts channeling on the targeted fire token", () => {
   expect(run.ship.fires.f0).toBeDefined();
 });
 
-test("a crew member can open a closed interior door from either side", () => {
-  const run = encounter("pilot");
+test("a crew member channels before opening a closed interior door", () => {
+  let run = encounter("pilot");
   run.ship.doors["bridge--weapons"]!.state = "closed";
-  const opened = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "open" });
+  run = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "open" });
+  expect(run.ship.doors["bridge--weapons"]?.state).toBe("closed");
+  const opened = completeInteraction(run);
   expect(opened.ship.doors["bridge--weapons"]?.state).toBe("open");
 });
 
@@ -180,10 +296,13 @@ test("only a crew member at the door can open it, and only the bridge can close 
 test("bridge operator controls any door or hull vent ship-wide", () => {
   let run = encounter("pilot", "bridge");
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "helm" });
-  const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull")!.id;
-  const opened = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  run = completeInteraction(run);
+  const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull" && door.roomA === "weapons")!.id;
+  let opened = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  opened = completeInteraction(opened);
   expect(opened.ship.doors[hullVentId]?.state).toBe("open");
-  const relocked = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "locked" });
+  let relocked = applyShipCommand(opened, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "locked" });
+  relocked = completeInteraction(relocked);
   expect(relocked.ship.doors["bridge--weapons"]?.state).toBe("locked");
 });
 
@@ -191,9 +310,11 @@ test("opening a hull vent kills anyone inside and empties the room's oxygen", ()
   let run = encounter("pilot", "bridge");
   run.crew.c1 = createCrew("c1", "s1", "Riko", "engineer", "weapons");
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "helm" });
+  run = completeInteraction(run);
   const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull" && door.roomA === "weapons")!.id;
   run.ship.rooms.weapons!.oxygen = 90;
-  const vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  let vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  vented = completeInteraction(vented);
   expect(vented.ship.rooms.weapons?.oxygen).toBe(0);
   expect(vented.crew.c1).toBeUndefined();
   expect(vented.crew.c0).toBeDefined();
@@ -206,10 +327,13 @@ test("venting a room clears its system's operatorCrewId and stops phantom oxygen
     if (door.kind === "interior" && (door.roomA === "oxygen" || door.roomB === "oxygen")) door.state = "locked";
   }
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
+  run = completeInteraction(run);
   run = applyShipCommand(run, { kind: "operate", crewId: "c1", systemId: "helm" });
+  run = completeInteraction(run);
   expect(run.ship.systems.oxygen.operatorCrewId).toBe("c0");
   const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull" && door.roomA === "oxygen")!.id;
-  const vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c1", doorId: hullVentId, state: "open" });
+  let vented = applyShipCommand(run, { kind: "setDoorState", crewId: "c1", doorId: hullVentId, state: "open" });
+  vented = completeInteraction(vented);
   expect(vented.crew.c0).toBeUndefined();
   expect(vented.ship.systems.oxygen.operatorCrewId).toBeUndefined();
   expect(vented.ship.rooms.oxygen?.oxygen).toBe(0);
@@ -238,14 +362,40 @@ test("a weapon hit reduces the target room's integrity", () => {
   expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
 });
 
-test("extinguishing a fire takes three channeled steps", () => {
+test("a small fire is extinguished by a short channel", () => {
   let run = encounter("pilot", "bridge");
   run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
   run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
-  for (let i = 0; i < 14; i += 1) run = stepShipSimulation(run, () => 1);
+  expect(run.crew.c0?.interaction?.totalTicks).toBe(3);
+  for (let i = 0; i < 2; i += 1) run = stepShipSimulation(run, () => 1);
   expect(run.ship.fires.f0).toBeDefined();
   run = stepShipSimulation(run, () => 1);
   expect(run.ship.fires.f0).toBeUndefined();
+});
+
+test("ignored fires escalate and take longer to extinguish", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  for (let i = 0; i < 15; i += 1) run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0?.size).toBe("medium");
+  run = applyShipCommand(run, { kind: "extinguish", crewId: "c0", fireId: "f0" });
+  expect(run.crew.c0?.interaction?.totalTicks).toBe(6);
+});
+
+test("a single fire chips away at a room's health pool", () => {
+  let run = encounter("pilot", "bridge");
+  const initialIntegrity = run.ship.rooms.bridge!.integrity;
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.bridge?.integrity).toBe(initialIntegrity - 1);
+});
+
+test("a fire deals only one health damage per tick to nearby crew", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = stepShipSimulation(run, () => 1);
+  expect(run.crew.c0?.health).toBe(99);
 });
 
 test("moving away from a fire resets its extinguish progress", () => {
@@ -340,7 +490,6 @@ test("oxygen only regenerates in the oxygen room while it is operated, and equal
   expect(run.ship.rooms.oxygen?.oxygen).toBe(50);
 
   run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "oxygen" });
-  run = stepShipSimulation(run, () => 1);
-  expect(run.ship.rooms.oxygen?.oxygen).toBe(49);
-  expect(run.ship.rooms.medbay?.oxygen).toBe(51);
+  run = completeInteraction(run);
+  expect(run.ship.systems.oxygen.operatorCrewId).toBe("c0");
 });

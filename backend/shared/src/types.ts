@@ -49,11 +49,15 @@ export interface ShipRoomState {
   destroyed: boolean;
 }
 
+export type FireSize = "small" | "medium" | "large";
+
 export interface FireToken {
   id: string;
   roomId: string;
   x: number;
   y: number;
+  size?: FireSize;
+  ageTicks?: number;
   stepsDone: number;
   channelTicks: number;
 }
@@ -66,11 +70,16 @@ export interface ShipState {
   maxShields: number;
   scrap: number;
   reactorCapacity: number;
+  weaponChargeTicks: number;
+  weaponChargeMaxTicks: number;
+  weaponTarget: WeaponTarget;
   rooms: Record<string, ShipRoomState>;
   doors: Record<string, ShipDoor>;
   fires: Record<string, FireToken>;
   systems: Record<SystemId, ShipSystemState>;
 }
+
+export type WeaponTarget = "shields" | "weapons" | "helm" | "core";
 
 export interface CrewState {
   id: string;
@@ -87,6 +96,16 @@ export interface CrewState {
   abilityCooldownTicks: number;
   carryingItemId?: string;
   extinguishingFireId?: string;
+  interaction?: CrewInteraction;
+  pendingCommand?: ShipCommand;
+}
+
+export type InteractionKind = "operate" | "repair" | "setDoorState" | "extinguish" | "sealBreach" | "attackBoarder" | "useAbility" | "revive" | "heal";
+
+export interface CrewInteraction {
+  kind: InteractionKind;
+  ticksDone: number;
+  totalTicks: number;
 }
 
 export interface BoarderState {
@@ -135,9 +154,13 @@ export type ShipCommand =
   | { kind: "moveVector"; crewId: string; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
   | { kind: "operate"; crewId: string; systemId: SystemId }
   | { kind: "repair"; crewId: string; systemId: SystemId }
+  | { kind: "setPower"; crewId: string; systemId: SystemId; power: number }
+  | { kind: "setWeaponTarget"; crewId: string; target: WeaponTarget }
+  | { kind: "fireWeapon"; crewId: string }
   | { kind: "setDoorState"; crewId: string; doorId: string; state: DoorState }
   | { kind: "extinguish"; crewId: string; fireId: string }
   | { kind: "sealBreach"; crewId: string }
   | { kind: "attackBoarder"; crewId: string; boarderId: string }
   | { kind: "useAbility"; crewId: string }
-  | { kind: "revive"; crewId: string; targetCrewId: string };
+  | { kind: "revive"; crewId: string; targetCrewId: string }
+  | { kind: "heal"; crewId: string };
