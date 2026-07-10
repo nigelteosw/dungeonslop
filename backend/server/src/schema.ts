@@ -45,6 +45,9 @@ export class ShipRoomSchema extends Schema {
   @type("number") oxygen = 100;
   @type("number") fire = 0;
   @type("boolean") breached = false;
+  @type("number") integrity = 0;
+  @type("number") maxIntegrity = 0;
+  @type("boolean") destroyed = false;
 
   constructor(room?: ShipRoomState) {
     super();

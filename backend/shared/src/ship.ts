@@ -22,6 +22,9 @@ const SYSTEM_ROOMS: Record<SystemId, string> = {
   oxygen: "oxygen",
 };
 
+const ROOM_MAX_INTEGRITY = 4;
+const HIT_INTEGRITY_DAMAGE = 1;
+
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
 
@@ -104,7 +107,7 @@ export function createShip(layoutId = "balanced"): ShipState {
   const rooms = Object.fromEntries(SHIP_ROOM_IDS.map((id) => {
     const bounds = layout.rooms[id];
     if (!bounds) throw new Error(`room ${id} missing from ship layout`);
-    return [id, { id, ...bounds, oxygen: 100, fire: 0, breached: false }];
+    return [id, { id, ...bounds, oxygen: 100, fire: 0, breached: false, integrity: ROOM_MAX_INTEGRITY, maxIntegrity: ROOM_MAX_INTEGRITY, destroyed: false }];
   }));
   const doors = buildDoors(layoutId, layout, rooms);
   const systems = Object.fromEntries(
@@ -347,6 +350,18 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     }
   }
 
+  for (const room of Object.values(next.ship.rooms)) {
+    if (room.destroyed || room.integrity > 0) continue;
+    room.destroyed = true;
+    room.breached = true;
+    for (const system of Object.values(next.ship.systems)) {
+      if (system.roomId === room.id) system.health = 0;
+    }
+    for (const door of Object.values(next.ship.doors)) {
+      if (door.roomA === room.id || door.roomB === room.id) door.state = "locked";
+    }
+  }
+
   for (const crew of Object.values(next.crew)) {
     crew.abilityCooldownTicks = Math.max(0, crew.abilityCooldownTicks - 1);
     if (crew.incapacitated) {
@@ -393,6 +408,7 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
           system.health = Math.max(0, system.health - 1);
           const room = next.ship.rooms[system.roomId];
           if (room) {
+            room.integrity = Math.max(0, room.integrity - HIT_INTEGRITY_DAMAGE);
             if (rng() < 0.45) room.fire = Math.max(1, room.fire);
             else room.breached = true;
           }

@@ -45,6 +45,9 @@ export interface ShipRoomState {
   oxygen: number;
   fire: number;
   breached: boolean;
+  integrity: number;
+  maxIntegrity: number;
+  destroyed: boolean;
 }
 
 export interface ShipState {

@@ -185,3 +185,25 @@ test("opening a hull vent kills anyone inside and empties the room's oxygen", ()
   expect(vented.crew.c1).toBeUndefined();
   expect(vented.crew.c0).toBeDefined();
 });
+
+test("a room at zero integrity is destroyed: its system dies, it breaches, and its doors lock", () => {
+  let run = encounter("engineer", "engineering");
+  run.ship.rooms.engineering!.integrity = 0;
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.rooms.engineering?.destroyed).toBe(true);
+  expect(run.ship.rooms.engineering?.breached).toBe(true);
+  expect(run.ship.systems.reactor.health).toBe(0);
+  const touchingDoors = Object.values(run.ship.doors).filter((door) => door.roomA === "engineering" || door.roomB === "engineering");
+  expect(touchingDoors.length).toBeGreaterThan(0);
+  expect(touchingDoors.every((door) => door.state === "locked")).toBe(true);
+});
+
+test("a weapon hit reduces the target room's integrity", () => {
+  let run = encounter("pilot");
+  run.enemy!.weaponChargeTicks = run.enemy!.weaponChargeMaxTicks - 1;
+  run.ship.shields = 0;
+  const before = { ...run.ship.rooms.bridge! };
+  run = stepShipSimulation(run, () => 0.99);
+  const hitRoom = Object.values(run.ship.rooms).find((room, index) => room.integrity < Object.values(before as never)[index]);
+  expect(Object.values(run.ship.rooms).some((room) => room.integrity < room.maxIntegrity)).toBe(true);
+});
