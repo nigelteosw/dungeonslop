@@ -11,12 +11,19 @@ export type RunStatus =
 export type CrewRole = "pilot" | "engineer" | "gunner" | "medic";
 export type SystemId = "helm" | "reactor" | "weapons" | "shields" | "oxygen";
 
+export type DoorState = "open" | "closed" | "locked";
+export type DoorSide = "n" | "s" | "e" | "w";
+export type DoorKind = "interior" | "hull";
+
 export interface ShipDoor {
   id: string;
-  a: string;
-  b: string;
-  open: boolean;
-  locked: boolean;
+  x: number;
+  y: number;
+  side: DoorSide;
+  kind: DoorKind;
+  state: DoorState;
+  roomA: string;
+  roomB?: string;
 }
 
 export interface ShipSystemState {

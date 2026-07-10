@@ -1,6 +1,9 @@
 import type {
   CrewRole,
   CrewState,
+  DoorKind,
+  DoorSide,
+  DoorState,
   RunState,
   ShipCommand,
   ShipDoor,
@@ -41,6 +44,50 @@ function doorId(a: string, b: string): string {
   return [a, b].sort().join("--");
 }
 
+const SIDE_DELTA: Record<DoorSide, { dx: number; dy: number }> = {
+  n: { dx: 0, dy: -1 },
+  s: { dx: 0, dy: 1 },
+  e: { dx: 1, dy: 0 },
+  w: { dx: -1, dy: 0 },
+};
+const OPPOSITE_SIDE: Record<DoorSide, DoorSide> = { n: "s", s: "n", e: "w", w: "e" };
+
+function computeInteriorDoorAnchor(boundsA: RoomBounds, boundsB: RoomBounds): { x: number; y: number; side: DoorSide } {
+  if (boundsA.x + boundsA.w === boundsB.x) return { x: boundsA.x + boundsA.w - 1, y: Math.max(boundsA.y, boundsB.y), side: "e" };
+  if (boundsB.x + boundsB.w === boundsA.x) return { x: boundsA.x, y: Math.max(boundsA.y, boundsB.y), side: "w" };
+  if (boundsA.y + boundsA.h === boundsB.y) return { x: Math.max(boundsA.x, boundsB.x), y: boundsA.y + boundsA.h - 1, side: "s" };
+  if (boundsB.y + boundsB.h === boundsA.y) return { x: Math.max(boundsA.x, boundsB.x), y: boundsA.y, side: "n" };
+  throw new Error("rooms do not share a wall");
+}
+
+function deriveHullVents(layoutId: string, rooms: Record<string, { id: string } & RoomBounds>): ShipDoor[] {
+  const vents: ShipDoor[] = [];
+  for (const room of Object.values(rooms)) {
+    for (let x = room.x; x < room.x + room.w; x += 1) {
+      for (let y = room.y; y < room.y + room.h; y += 1) {
+        for (const side of ["n", "s", "e", "w"] as DoorSide[]) {
+          const delta = SIDE_DELTA[side];
+          if (roomAtDeckPosition(layoutId, x + delta.dx, y + delta.dy)) continue;
+          vents.push({ id: `hull-${room.id}-${x}-${y}-${side}`, x, y, side, kind: "hull", state: "locked", roomA: room.id });
+        }
+      }
+    }
+  }
+  return vents;
+}
+
+function buildDoors(layoutId: string, layout: ShipLayoutDef, rooms: Record<string, { id: string } & RoomBounds>): Record<string, ShipDoor> {
+  const interiorDoors = layout.doors.map(([a, b]): ShipDoor => {
+    const boundsA = layout.rooms[a];
+    const boundsB = layout.rooms[b];
+    if (!boundsA || !boundsB) throw new Error(`door references unknown room ${a} or ${b}`);
+    const anchor = computeInteriorDoorAnchor(boundsA, boundsB);
+    return { id: doorId(a, b), ...anchor, kind: "interior", state: "open", roomA: a, roomB: b };
+  });
+  const hullVents = deriveHullVents(layoutId, rooms);
+  return Object.fromEntries([...interiorDoors, ...hullVents].map((door) => [door.id, door]));
+}
+
 export function createShip(layoutId = "balanced"): ShipState {
   const layout = SHIP_LAYOUTS[layoutId];
   if (!layout) throw new Error("unknown ship layout");
@@ -49,12 +96,7 @@ export function createShip(layoutId = "balanced"): ShipState {
     if (!bounds) throw new Error(`room ${id} missing from ship layout`);
     return [id, { id, ...bounds, oxygen: 100, fire: 0, breached: false }];
   }));
-  const doors = Object.fromEntries(
-    layout.doors.map(([a, b]) => {
-      const door: ShipDoor = { id: doorId(a, b), a, b, open: true, locked: false };
-      return [door.id, door];
-    }),
-  );
+  const doors = buildDoors(layoutId, layout, rooms);
   const systems = Object.fromEntries(
     (Object.entries(SYSTEM_ROOMS) as [SystemId, string][]).map(([id, roomId]) => [
       id,
@@ -81,11 +123,11 @@ export function applyShipLayout(state: RunState, layoutId: string): RunState {
   if (!layout) throw new Error("unknown ship layout");
   const next = structuredClone(state);
   next.ship.layoutId = layoutId;
-  next.ship.doors = Object.fromEntries(layout.doors.map(([a,b]) => { const id=doorId(a,b); return [id,{id,a,b,open:true,locked:false}]; }));
   for (const [roomId, bounds] of Object.entries(layout.rooms)) {
     const room = next.ship.rooms[roomId];
     if (room) Object.assign(room, bounds);
   }
+  next.ship.doors = buildDoors(layoutId, layout, next.ship.rooms);
   for (const crew of Object.values(next.crew)) {
     const center = roomCenter(layoutId, crew.roomId);
     crew.deckX = center.x;
@@ -135,8 +177,8 @@ export function createRun(seed: string, crew: CrewState[]): RunState {
 export function adjacentRooms(ship: ShipState, roomId: string): string[] {
   if (!ship.rooms[roomId]) throw new Error("unknown ship room");
   return Object.values(ship.doors)
-    .filter((door) => door.open && !door.locked && (door.a === roomId || door.b === roomId))
-    .map((door) => (door.a === roomId ? door.b : door.a));
+    .filter((door) => door.kind === "interior" && door.state === "open" && (door.roomA === roomId || door.roomB === roomId))
+    .map((door) => (door.roomA === roomId ? door.roomB! : door.roomA));
 }
 
 export function shortestRoomPath(ship: ShipState, from: string, to: string): string[] {

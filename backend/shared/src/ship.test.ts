@@ -18,12 +18,33 @@ test("every authoritative layout uses square rooms", () => {
 
 test("closed and locked doors are excluded from movement", () => {
   const closed = encounter("pilot");
-  closed.ship.doors["bridge--weapons"]!.open = false;
+  closed.ship.doors["bridge--weapons"]!.state = "closed";
   expect(() => applyShipCommand(closed, { kind: "move", crewId: "c0", roomId: "weapons" })).toThrow("not directly reachable");
 
   const locked = encounter("pilot");
-  locked.ship.doors["bridge--weapons"]!.locked = true;
+  locked.ship.doors["bridge--weapons"]!.state = "locked";
   expect(() => applyShipCommand(locked, { kind: "move", crewId: "c0", roomId: "weapons" })).toThrow("not directly reachable");
+});
+
+test("doors are anchored to a specific tile-to-tile junction", () => {
+  const ship = createShip();
+  const door = ship.doors["bridge--weapons"];
+  expect(door).toMatchObject({ kind: "interior", state: "open", roomA: "weapons", roomB: "bridge" });
+  expect(door!.x).toBe(7);
+  expect(door!.y).toBe(3);
+  expect(door!.side).toBe("e");
+});
+
+test("every room boundary tile not touching another room gets a locked hull vent", () => {
+  const ship = createShip();
+  const hullVents = Object.values(ship.doors).filter((door) => door.kind === "hull");
+  expect(hullVents.length).toBeGreaterThan(0);
+  for (const vent of hullVents) {
+    expect(vent.state).toBe("locked");
+    expect(vent.roomB).toBeUndefined();
+  }
+  const weaponsVents = hullVents.filter((door) => door.roomA === "weapons");
+  expect(weaponsVents.length).toBeGreaterThan(0);
 });
 
 test("crew moves one room and operates a colocated station", () => {

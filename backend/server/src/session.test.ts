@@ -29,10 +29,10 @@ test("schema snapshot includes authoritative room geometry and doors", () => {
 
   expect(state.rooms.find((room) => room.id === "bridge")).toMatchObject({ x: 8, y: 3, w: 2, h: 2 });
   expect(state.doors.find((door) => door.id === "bridge--weapons")).toMatchObject({
-    a: "weapons",
-    b: "bridge",
-    open: true,
-    locked: false,
+    roomA: "weapons",
+    roomB: "bridge",
+    kind: "interior",
+    state: "open",
   });
 });
 

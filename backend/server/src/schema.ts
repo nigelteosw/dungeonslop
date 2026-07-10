@@ -54,14 +54,19 @@ export class ShipRoomSchema extends Schema {
 
 export class ShipDoorSchema extends Schema {
   @type("string") id = "";
-  @type("string") a = "";
-  @type("string") b = "";
-  @type("boolean") open = true;
-  @type("boolean") locked = false;
+  @type("number") x = 0;
+  @type("number") y = 0;
+  @type("string") side = "";
+  @type("string") kind = "";
+  @type("string") state = "";
+  @type("string") roomA = "";
+  @type("string") roomB = "";
 
   constructor(door?: ShipDoor) {
     super();
-    if (door) Object.assign(this, door);
+    if (!door) return;
+    Object.assign(this, door);
+    this.roomB = door.roomB ?? "";
   }
 }
 
