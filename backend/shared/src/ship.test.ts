@@ -145,3 +145,31 @@ test("each role ability creates a distinct authoritative effect", () => {
   expect(medic.crew.c0?.abilityCooldownTicks).toBe(32);
   expect(() => applyShipCommand(medic, { kind: "useAbility", crewId: "c0" })).toThrow("cooling down");
 });
+
+test("a crew member can open a closed interior door from either side", () => {
+  const run = encounter("pilot");
+  run.ship.doors["bridge--weapons"]!.state = "closed";
+  const opened = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "open" });
+  expect(opened.ship.doors["bridge--weapons"]?.state).toBe("open");
+});
+
+test("only a crew member at the door can open it, and only the bridge can close or lock it", () => {
+  const run = encounter("pilot", "engineering");
+  run.ship.doors["bridge--weapons"]!.state = "closed";
+  expect(() => applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "open" })).toThrow(
+    "not at that door",
+  );
+  expect(() => applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "closed" })).toThrow(
+    "only the bridge",
+  );
+});
+
+test("bridge operator controls any door or hull vent ship-wide", () => {
+  let run = encounter("pilot", "bridge");
+  run = applyShipCommand(run, { kind: "operate", crewId: "c0", systemId: "helm" });
+  const hullVentId = Object.values(run.ship.doors).find((door) => door.kind === "hull")!.id;
+  const opened = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: hullVentId, state: "open" });
+  expect(opened.ship.doors[hullVentId]?.state).toBe("open");
+  const relocked = applyShipCommand(run, { kind: "setDoorState", crewId: "c0", doorId: "bridge--weapons", state: "locked" });
+  expect(relocked.ship.doors["bridge--weapons"]?.state).toBe("locked");
+});

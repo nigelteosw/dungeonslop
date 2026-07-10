@@ -252,6 +252,20 @@ export function applyShipCommand(state: RunState, command: ShipCommand): RunStat
     return next;
   }
 
+  if (command.kind === "setDoorState") {
+    const door = next.ship.doors[command.doorId];
+    if (!door) throw new Error("unknown door");
+    const atBridge = next.ship.systems.helm.operatorCrewId === crew.id;
+    const bridgeOnly = door.kind === "hull" || door.state === "locked" || command.state === "locked" || command.state === "closed";
+    if (bridgeOnly && !atBridge) throw new Error("only the bridge can control that door");
+    if (!atBridge) {
+      const atDoor = crew.roomId === door.roomA || crew.roomId === door.roomB;
+      if (!atDoor) throw new Error("crew member is not at that door");
+    }
+    door.state = command.state;
+    return next;
+  }
+
   const room = next.ship.rooms[crew.roomId];
   if (!room) throw new Error("crew member is in an unknown room");
   if (command.kind === "extinguish") {

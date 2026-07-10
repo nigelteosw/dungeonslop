@@ -24,6 +24,9 @@ function parseCommand(message: unknown): ShipCommand {
   if ((kind === "operate" || kind === "repair") && typeof value.systemId === "string") {
     return { kind, crewId, systemId: value.systemId as SystemId };
   }
+  if (kind === "setDoorState" && typeof value.doorId === "string" && typeof value.state === "string" && ["open", "closed", "locked"].includes(value.state)) {
+    return { kind, crewId, doorId: value.doorId, state: value.state as "open" | "closed" | "locked" };
+  }
   if (kind === "extinguish" || kind === "sealBreach") return { kind, crewId };
   if (kind === "attackBoarder" && typeof value.boarderId === "string") return { kind, crewId, boarderId: value.boarderId };
   if (kind === "useAbility") return { kind, crewId };

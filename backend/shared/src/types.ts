@@ -122,6 +122,7 @@ export type ShipCommand =
   | { kind: "moveVector"; crewId: string; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
   | { kind: "operate"; crewId: string; systemId: SystemId }
   | { kind: "repair"; crewId: string; systemId: SystemId }
+  | { kind: "setDoorState"; crewId: string; doorId: string; state: DoorState }
   | { kind: "extinguish"; crewId: string }
   | { kind: "sealBreach"; crewId: string }
   | { kind: "attackBoarder"; crewId: string; boarderId: string }
