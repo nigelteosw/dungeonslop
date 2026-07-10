@@ -12,8 +12,8 @@ import {
   type WeaponTarget,
 } from './schemaAdapter';
 
-type Status = 'idle' | 'connecting' | 'lobby' | 'in-game' | 'error';
-type Command =
+export type Status = 'idle' | 'connecting' | 'lobby' | 'in-game' | 'error';
+export type Command =
   | { kind: 'move'; crewId: string; roomId: string }
   | { kind: 'moveVector'; crewId: string; dx: -1|0|1; dy: -1|0|1 }
   | { kind: 'operate' | 'repair'; crewId: string; systemId: SystemId }
@@ -59,19 +59,22 @@ export function useDungeonRoom() {
     });
   }, []);
 
-  const create = useCallback(async () => {
+  const connect = useCallback(async (promise: Promise<Room<DungeonStateLike>>, fallbackMessage: string) => {
     setStatus('connecting');
     setError(null);
-    try { attach(await colyseusClient.create<DungeonStateLike>('dungeon')); }
-    catch (reason) { setStatus('error'); setError(reason instanceof Error ? reason.message : 'Failed to create room'); }
+    try { attach(await promise); }
+    catch (reason) { setStatus('error'); setError(reason instanceof Error ? reason.message : fallbackMessage); }
   }, [attach]);
 
-  const join = useCallback(async (code: string) => {
-    setStatus('connecting');
-    setError(null);
-    try { attach(await colyseusClient.joinById<DungeonStateLike>(code.trim())); }
-    catch (reason) { setStatus('error'); setError(reason instanceof Error ? reason.message : 'Failed to join room'); }
-  }, [attach]);
+  const create = useCallback(
+    () => connect(colyseusClient.create<DungeonStateLike>('dungeon'), 'Failed to create room'),
+    [connect],
+  );
+
+  const join = useCallback(
+    (code: string) => connect(colyseusClient.joinById<DungeonStateLike>(code.trim()), 'Failed to join room'),
+    [connect],
+  );
 
   const sendCommand = useCallback((command: Command) => {
     setError(null);

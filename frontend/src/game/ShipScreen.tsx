@@ -1,24 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type { LobbyPlayerLike, ShipViewState, SystemId, WeaponTarget } from '../net/schemaAdapter';
+import type { Command } from '../net/useDungeonRoom';
 import { adjacentRoomIds, DECK_COLUMNS, DECK_ROWS, roomDoorLayouts, roomLayouts } from './shipLayout';
 import { useShipAudio } from './useShipAudio';
 import './ship.css';
-
-type Command =
-  | { kind: 'move'; crewId: string; roomId: string }
-  | { kind: 'moveVector'; crewId: string; dx: -1|0|1; dy: -1|0|1 }
-  | { kind: 'operate' | 'repair'; crewId: string; systemId: SystemId }
-  | { kind: 'setPower'; crewId: string; systemId: SystemId; power: number }
-  | { kind: 'setWeaponTarget'; crewId: string; target: WeaponTarget }
-  | { kind: 'fireWeapon'; crewId: string }
-  | { kind: 'setDoorState'; crewId: string; doorId: string; state: 'open' | 'closed' | 'locked' }
-  | { kind: 'extinguish'; crewId: string; fireId: string }
-  | { kind: 'sealBreach'; crewId: string }
-  | { kind: 'attackBoarder'; crewId: string; boarderId: string }
-  | { kind: 'useAbility'; crewId: string }
-  | { kind: 'revive'; crewId: string; targetCrewId: string }
-  | { kind: 'heal'; crewId: string };
 
 const OPTION_COPY: Record<string, { name: string; description: string }> = {
   'scrap-raider': { name: 'Scrap Raider', description: 'Balanced weapons. Predictably hostile.' },

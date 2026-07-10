@@ -23,7 +23,6 @@ export interface SessionSnapshot {
   status: "lobby" | RunState["status"];
   players: LobbyPlayer[];
   run?: RunState;
-  sessionToCrew: Record<string, string>;
 }
 
 const ROLES: readonly CrewRole[] = ["pilot", "engineer", "gunner", "medic"];
@@ -112,7 +111,6 @@ export class GameSession {
       status: this.run?.status ?? "lobby",
       players: this.players.map((player) => ({ ...player })),
       ...(this.run ? { run: structuredClone(this.run) } : {}),
-      sessionToCrew: Object.fromEntries(this.sessionToCrew),
     };
   }
 

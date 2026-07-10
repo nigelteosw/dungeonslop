@@ -45,7 +45,7 @@ function parseCommand(message: unknown): ShipCommand {
 
 export class DungeonRoom extends Room<DungeonState> {
   maxClients = 4;
-  private session = new GameSession("pending-room-id");
+  private session!: GameSession;
 
   onCreate(): void {
     this.session = new GameSession(this.roomId || "dungeon");

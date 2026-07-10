@@ -1,3 +1,5 @@
+import type { ShipDoorView, SystemId } from '../net/schemaAdapter';
+
 // Deck coordinates (room x/y/w/h, door positions, crew deckX/deckY) are all
 // 0-indexed cell units on a DECK_COLUMNS x DECK_ROWS grid, so any position
 // converts to a fraction of the board as value / DECK_COLUMNS (or _ROWS).
@@ -14,19 +16,10 @@ export interface RoomGeometry {
 
 export interface RoomLayout extends RoomGeometry {
   name: string;
-  systemId?: 'helm' | 'reactor' | 'weapons' | 'shields' | 'oxygen';
+  systemId?: SystemId;
 }
 
-export interface DoorLike {
-  id: string;
-  x: number;
-  y: number;
-  side: 'n' | 's' | 'e' | 'w';
-  kind: 'interior' | 'hull';
-  state: 'open' | 'closed' | 'locked';
-  roomA: string;
-  roomB?: string;
-}
+export type DoorLike = ShipDoorView;
 
 export interface DoorLayout {
   id: string;

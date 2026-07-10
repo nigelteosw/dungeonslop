@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CrewRole, LobbyPlayerLike } from '../net/schemaAdapter';
+import type { Status } from '../net/useDungeonRoom';
 import './ship.css';
 
 const ROLES: { id: CrewRole; name: string; job: string }[] = [
@@ -10,7 +11,7 @@ const ROLES: { id: CrewRole; name: string; job: string }[] = [
 ];
 
 interface Props {
-  status: 'idle' | 'connecting' | 'lobby' | 'in-game' | 'error';
+  status: Status;
   error: string | null;
   roomCode: string;
   mySessionId: string;
