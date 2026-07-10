@@ -249,3 +249,28 @@ test("taking damage while channeling does not interrupt extinguish progress", ()
   expect(run.crew.c0!.health).toBeLessThan(100);
   expect(run.ship.fires.f0?.channelTicks).toBe(1);
 });
+
+test("fire self-extinguishes once its room runs out of oxygen", () => {
+  let run = encounter("pilot", "bridge");
+  run.ship.rooms.bridge!.oxygen = 0;
+  run.ship.fires.f0 = { id: "f0", roomId: "bridge", x: 8, y: 3, stepsDone: 1, channelTicks: 2 };
+  run = stepShipSimulation(run, () => 1);
+  expect(run.ship.fires.f0).toBeUndefined();
+});
+
+test("fire can spread into an adjacent room only through an open door", () => {
+  let run = encounter("pilot", "weapons");
+  run.ship.fires.f0 = { id: "f0", roomId: "weapons", x: 7, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = stepShipSimulation(run, () => 0);
+  const spread = Object.values(run.ship.fires).some((fire) => fire.roomId === "bridge" && fire.x === 8 && fire.y === 3);
+  expect(spread).toBe(true);
+});
+
+test("fire does not spread through a closed door", () => {
+  let run = encounter("pilot", "weapons");
+  run.ship.doors["bridge--weapons"]!.state = "closed";
+  run.ship.fires.f0 = { id: "f0", roomId: "weapons", x: 7, y: 3, stepsDone: 0, channelTicks: 0 };
+  run = stepShipSimulation(run, () => 0);
+  const spread = Object.values(run.ship.fires).some((fire) => fire.roomId === "bridge");
+  expect(spread).toBe(false);
+});

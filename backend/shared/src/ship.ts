@@ -29,6 +29,8 @@ const FIRE_INTEGRITY_DAMAGE_PER_TOKEN = 1;
 const FIRE_CREW_DAMAGE_PER_TOKEN = 2;
 const STEP_TICKS = 5;
 const STEPS_TO_EXTINGUISH = 3;
+const FIRE_SPREAD_CHANCE = 0.0125;
+const SPREAD_SIDES: DoorSide[] = ["e", "n", "s", "w"];
 
 export interface RoomBounds { x: number; y: number; w: number; h: number; }
 interface ShipLayoutDef { rooms: Record<string, RoomBounds>; doors: readonly [string, string][]; }
@@ -82,6 +84,15 @@ function deriveHullVents(layoutId: string, rooms: Record<string, { id: string } 
     }
   }
   return vents;
+}
+
+function interiorDoorAt(doors: Record<string, ShipDoor>, x: number, y: number, side: DoorSide): ShipDoor | undefined {
+  const delta = SIDE_DELTA[side];
+  return Object.values(doors).find((door) => {
+    if (door.kind !== "interior") return false;
+    if (door.x === x && door.y === y && door.side === side) return true;
+    return door.x === x + delta.dx && door.y === y + delta.dy && door.side === OPPOSITE_SIDE[side];
+  });
 }
 
 function buildDoors(layoutId: string, layout: ShipLayoutDef, rooms: Record<string, { id: string } & RoomBounds>): Record<string, ShipDoor> {
@@ -398,6 +409,30 @@ export function stepShipSimulation(state: RunState, rng: Rng): RunState {
     for (const door of Object.values(next.ship.doors)) {
       if (door.roomA === room.id || door.roomB === room.id) door.state = "locked";
     }
+  }
+
+  for (const [id, fire] of Object.entries(next.ship.fires)) {
+    if ((next.ship.rooms[fire.roomId]?.oxygen ?? 0) <= 0) delete next.ship.fires[id];
+  }
+
+  for (const fire of Object.values(next.ship.fires)) {
+    if (rng() >= FIRE_SPREAD_CHANCE) continue;
+    const side = SPREAD_SIDES[Math.floor(rng() * SPREAD_SIDES.length)]!;
+    const delta = SIDE_DELTA[side];
+    const nx = fire.x + delta.dx;
+    const ny = fire.y + delta.dy;
+    const neighborRoomId = roomAtDeckPosition(next.ship.layoutId, nx, ny);
+    if (!neighborRoomId) continue;
+    if (neighborRoomId !== fire.roomId) {
+      const door = interiorDoorAt(next.ship.doors, fire.x, fire.y, side);
+      if (!door || door.state !== "open") continue;
+    }
+    const alreadyBurning = Object.values(next.ship.fires).some(
+      (candidate) => candidate.roomId === neighborRoomId && candidate.x === nx && candidate.y === ny,
+    );
+    if (alreadyBurning) continue;
+    const id = `fire-${neighborRoomId}-${nx}-${ny}-${next.tick}`;
+    next.ship.fires[id] = { id, roomId: neighborRoomId, x: nx, y: ny, stepsDone: 0, channelTicks: 0 };
   }
 
   for (const fire of Object.values(next.ship.fires)) {
