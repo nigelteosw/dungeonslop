@@ -302,6 +302,11 @@ function normalizeSystemPower(ship: ShipState): void {
   }
 }
 
+function repairRoomIntegrity(room: ShipState["rooms"][string], amount: number): void {
+  room.integrity = Math.min(room.maxIntegrity, room.integrity + amount);
+  if (room.integrity > 0) room.destroyed = false;
+}
+
 function requireWeaponOperator(next: RunState, crewId: string): void {
   const crew = next.crew[crewId];
   const weapons = next.ship.systems.weapons;
@@ -419,7 +424,15 @@ export function applyShipCommand(state: RunState, command: ShipCommand, resolveI
     const amount = crew.role === "engineer" ? 2 : 1;
     system.health = Math.min(system.maxHealth, system.health + amount);
     const repairedRoom = next.ship.rooms[system.roomId];
-    if (repairedRoom) repairedRoom.integrity = Math.min(repairedRoom.maxIntegrity, repairedRoom.integrity + ROOM_REPAIR_AMOUNT);
+    if (repairedRoom) repairRoomIntegrity(repairedRoom, ROOM_REPAIR_AMOUNT);
+    return next;
+  }
+
+  if (command.kind === "repairRoom") {
+    const repairedRoom = next.ship.rooms[crew.roomId];
+    if (!repairedRoom) throw new Error("crew member is in an unknown room");
+    if (repairedRoom.integrity >= repairedRoom.maxIntegrity && !repairedRoom.destroyed) throw new Error("room is already fully repaired");
+    repairRoomIntegrity(repairedRoom, crew.role === "engineer" ? ROOM_REPAIR_AMOUNT * 2 : ROOM_REPAIR_AMOUNT);
     return next;
   }
 

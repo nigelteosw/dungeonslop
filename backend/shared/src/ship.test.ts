@@ -411,6 +411,15 @@ test("a room at zero integrity is destroyed: its system dies, it breaches, and i
   expect(touchingDoors.every((door) => door.state === "locked")).toBe(true);
 });
 
+test("crew can repair a destroyed room even when it has no damaged system", () => {
+  let run = encounter("medic", "medbay");
+  run.ship.rooms.medbay!.integrity = 0;
+  run.ship.rooms.medbay!.destroyed = true;
+  run = applyShipCommand(run, { kind: "repairRoom", crewId: "c0" });
+  run = completeInteraction(run);
+  expect(run.ship.rooms.medbay).toMatchObject({ integrity: 12, destroyed: false });
+});
+
 test("a weapon hit reduces the target room's integrity", () => {
   let run = encounter("pilot");
   run.enemy!.weaponChargeTicks = run.enemy!.weaponChargeMaxTicks - 1;

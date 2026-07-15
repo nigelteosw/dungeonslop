@@ -99,7 +99,7 @@ export interface CrewState {
   pendingCommand?: ShipCommand;
 }
 
-export type InteractionKind = "operate" | "repair" | "setDoorState" | "extinguish" | "sealBreach" | "attackBoarder" | "useAbility" | "revive" | "heal";
+export type InteractionKind = "operate" | "repair" | "repairRoom" | "setDoorState" | "extinguish" | "sealBreach" | "attackBoarder" | "useAbility" | "revive" | "heal";
 
 export interface CrewInteraction {
   kind: InteractionKind;
@@ -154,6 +154,7 @@ export type ShipCommand =
   | { kind: "moveVector"; crewId: string; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
   | { kind: "operate"; crewId: string; systemId: SystemId }
   | { kind: "repair"; crewId: string; systemId: SystemId }
+  | { kind: "repairRoom"; crewId: string }
   | { kind: "setPower"; crewId: string; systemId: SystemId; power: number }
   | { kind: "setWeaponTarget"; crewId: string; target: WeaponTarget }
   | { kind: "fireWeapon"; crewId: string }

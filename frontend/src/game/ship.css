@@ -181,7 +181,10 @@ button:focus-visible { box-shadow: 0 0 16px -4px var(--c-cyan); }
 .engine-top { top:calc(var(--hull-top) + 10%); transform:rotate(-5deg); }
 .engine-bottom { bottom:calc(100% - var(--hull-top) - var(--hull-height) + 10%); transform:rotate(5deg); }
 
-.ship-door { position:absolute; z-index:7; display:block; width:14px; height:38px; transform:translate(-50%,-50%); border:2px solid #202b30; border-radius:2px; background:linear-gradient(90deg,var(--c-amber) 0 3px,#c6cecb 3px 5px,transparent 5px 9px,#c6cecb 9px 11px,var(--c-amber) 11px); box-shadow:0 0 0 1px #718083,0 2px 4px #07101499; pointer-events:none; }
+.ship-door { position:absolute; z-index:7; display:block; width:14px; min-width:0; height:38px; padding:0; transform:translate(-50%,-50%); border:2px solid #202b30; border-radius:2px; background:linear-gradient(90deg,var(--c-amber) 0 3px,#c6cecb 3px 5px,transparent 5px 9px,#c6cecb 9px 11px,var(--c-amber) 11px); box-shadow:0 0 0 1px #718083,0 2px 4px #07101499; pointer-events:auto; }
+.ship-door:disabled { cursor:default; opacity:1; }
+.ship-door:not(:disabled) { cursor:pointer; outline:2px solid var(--c-cyan); outline-offset:2px; }
+.ship-door:not(:disabled):hover { box-shadow:0 0 0 2px var(--c-cyan),0 0 12px var(--c-cyan-dim); }
 .ship-door.horizontal { width:38px; height:14px; background:linear-gradient(var(--c-amber) 0 3px,#c6cecb 3px 5px,transparent 5px 9px,#c6cecb 9px 11px,var(--c-amber) 11px); }
 .ship-door.closed { background:linear-gradient(90deg,var(--c-amber) 0 3px,#c6cecb 3px 11px,var(--c-amber) 11px); }
 .ship-door.horizontal.closed { background:linear-gradient(var(--c-amber) 0 3px,#c6cecb 3px 11px,var(--c-amber) 11px); }

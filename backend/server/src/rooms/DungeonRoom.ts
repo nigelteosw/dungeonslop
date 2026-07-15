@@ -24,6 +24,7 @@ function parseCommand(message: unknown): ShipCommand {
   if ((kind === "operate" || kind === "repair") && typeof value.systemId === "string") {
     return { kind, crewId, systemId: value.systemId as SystemId };
   }
+  if (kind === "repairRoom") return { kind, crewId };
   if (kind === "setPower" && typeof value.systemId === "string" && typeof value.power === "number" && Number.isInteger(value.power)) {
     return { kind, crewId, systemId: value.systemId as SystemId, power: value.power };
   }
@@ -67,7 +68,15 @@ export class DungeonRoom extends Room<DungeonState> {
     client.send("mySessionId", { sessionId: client.sessionId });
   }
 
-  onLeave(client: Client): void {
+  async onLeave(client: Client, consented: boolean): Promise<void> {
+    if (!consented && this.session.run) {
+      try {
+        await this.allowReconnection(client, 20);
+        return;
+      } catch {
+        // Grace period expired; release the disconnected seat below.
+      }
+    }
     this.session.leave(client.sessionId);
     this.project();
   }

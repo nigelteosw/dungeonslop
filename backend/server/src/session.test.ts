@@ -66,3 +66,27 @@ test("crew votes advance the authoritative run into an encounter", () => {
   expect(session.run?.status).toBe("encounter");
   expect(session.run?.enemy?.id).toBe("shield-leech");
 });
+
+test("a manual killing shot advances to the post-encounter vote on the next tick", () => {
+  const session = startedSession();
+  session.castVote("host", "volatile-derelict");
+  session.castVote("friend", "volatile-derelict");
+  const run = session.run;
+  if (!run?.enemy) throw new Error("expected active encounter");
+  run.crew.c0!.roomId = "weapons";
+  run.ship.systems.weapons.operatorCrewId = "c0";
+  run.enemy.shields = 0;
+  run.enemy.hull = 2;
+  run.ship.weaponChargeTicks = run.ship.weaponChargeMaxTicks;
+
+  session.handleCommand("host", { kind: "fireWeapon", crewId: "c0" });
+  expect(session.run?.status).toBe("victory");
+  session.tick();
+  expect(session.run?.status).toBe("layoutVote");
+  expect(session.run?.vote?.kind).toBe("layout");
+});
+
+test("host cannot restart an active run", () => {
+  const session = startedSession();
+  expect(() => session.start("host")).toThrow("run has already started");
+});

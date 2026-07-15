@@ -163,23 +163,28 @@ export function castVote(state: RunState, ownerId: string, option: string): RunS
 }
 
 export function stepRun(state: RunState, rng: Rng): RunState {
+  if (state.status === "victory") return advanceAfterVictory(structuredClone(state));
   if (state.status === "encounter") {
     const next = stepShipSimulation(state, rng);
     if (next.status !== "victory") return next;
-    if (next.sectorIndex >= 2) {
-      next.objectiveText = "Three sectors survived";
-      return next;
-    }
-    next.ship.scrap += 8;
-    next.status = "layoutVote";
-    next.vote = vote("layout", Object.keys(SHIP_LAYOUT_OPTIONS), next.tick);
-    next.objectiveText = "Vote on the next ship layout";
-    return next;
+    return advanceAfterVictory(next);
   }
   const next = structuredClone(state);
   if (next.status === "mapVote" || next.status === "upgradeVote" || next.status === "eventVote" || next.status === "layoutVote") {
     next.tick += 1;
     if (next.vote && next.tick >= next.vote.deadlineTick) return resolveVote(next);
   }
+  return next;
+}
+
+function advanceAfterVictory(next: RunState): RunState {
+  if (next.sectorIndex >= 2) {
+    next.objectiveText = "Three sectors survived";
+    return next;
+  }
+  next.ship.scrap += 8;
+  next.status = "layoutVote";
+  next.vote = vote("layout", Object.keys(SHIP_LAYOUT_OPTIONS), next.tick);
+  next.objectiveText = "Vote on the next ship layout";
   return next;
 }

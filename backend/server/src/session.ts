@@ -78,6 +78,7 @@ export class GameSession {
 
   start(sessionId: string): void {
     const player = this.requirePlayer(sessionId);
+    if (this.run) throw new Error("run has already started");
     if (!player.host) throw new Error("only host can start");
     if (!this.players.every((candidate) => candidate.ready)) throw new Error("all players must be ready");
 
@@ -102,7 +103,7 @@ export class GameSession {
   }
 
   tick(): void {
-    if (!this.run || this.run.status === "victory" || this.run.status === "defeat") return;
+    if (!this.run || this.run.status === "defeat" || (this.run.status === "victory" && this.run.sectorIndex >= 2)) return;
     this.run = stepRun(this.run, this.rng);
   }
 

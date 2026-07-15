@@ -17,6 +17,7 @@ export type Command =
   | { kind: 'move'; crewId: string; roomId: string }
   | { kind: 'moveVector'; crewId: string; dx: -1|0|1; dy: -1|0|1 }
   | { kind: 'operate' | 'repair'; crewId: string; systemId: SystemId }
+  | { kind: 'repairRoom'; crewId: string }
   | { kind: 'setPower'; crewId: string; systemId: SystemId; power: number }
   | { kind: 'setWeaponTarget'; crewId: string; target: WeaponTarget }
   | { kind: 'fireWeapon'; crewId: string }
@@ -30,6 +31,7 @@ export type Command =
 
 export function useDungeonRoom() {
   const roomRef = useRef<Room<DungeonStateLike> | null>(null);
+  const attachRef = useRef<(room: Room<DungeonStateLike>) => void>(() => undefined);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState('');
@@ -52,12 +54,32 @@ export function useDungeonRoom() {
         setShipState(toShipViewState(state));
       }
     });
-    room.onLeave(() => {
+    room.onLeave(async () => {
+      if (roomRef.current !== room) return;
+      const reconnectionToken = room.reconnectionToken;
+      if (reconnectionToken) {
+        setStatus('connecting');
+        const deadline = Date.now() + 18_000;
+        let lastReason: unknown;
+        while (roomRef.current === room && Date.now() < deadline) {
+          try {
+            attachRef.current(await colyseusClient.reconnect<DungeonStateLike>(reconnectionToken));
+            return;
+          } catch (reason) {
+            lastReason = reason;
+            await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+          }
+        }
+        if (roomRef.current !== room) return;
+        setError(lastReason instanceof Error ? lastReason.message : 'Reconnection grace period expired');
+      }
       roomRef.current = null;
       setStatus('idle');
       setShipState(null);
+      setMySessionId('');
     });
   }, []);
+  attachRef.current = attach;
 
   const connect = useCallback(async (promise: Promise<Room<DungeonStateLike>>, fallbackMessage: string) => {
     setStatus('connecting');

@@ -38,7 +38,7 @@ const ABILITY_COPY = {
   pilot: 'Emergency Burn', engineer: 'Overcharge Repair', gunner: 'Called Shot', medic: 'Stabilize Crew',
 } as const;
 const INTERACTION_COPY: Record<string, string> = {
-  operate: 'OPERATING', repair: 'REPAIRING', setDoorState: 'CONTROLLING DOOR', extinguish: 'EXTINGUISHING',
+  operate: 'OPERATING', repair: 'REPAIRING', repairRoom: 'REPAIRING ROOM', setDoorState: 'CONTROLLING DOOR', extinguish: 'EXTINGUISHING',
   sealBreach: 'SEALING', attackBoarder: 'FIGHTING', useAbility: 'USING ABILITY', revive: 'REVIVING', heal: 'HEALING',
 };
 const SYSTEM_COPY: Record<SystemId, string> = {
@@ -94,8 +94,19 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
     const timer = setTimeout(() => setOutgoingCue(null), 500);
     return () => clearTimeout(timer);
   }, [outgoingCue]);
+  const audio = useShipAudio(state);
+  const lastMoveAt = useRef(0);
+  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => keyHandlerRef.current(event);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const me = state.crew[myCrewId];
-  if (!me) return <main className="ship-shell"><p>Waiting for crew assignment…</p></main>;
+  if (!me) {
+    keyHandlerRef.current = () => undefined;
+    return <main className="ship-shell"><p>Your crew member is no longer aboard.</p></main>;
+  }
   const roomLayout = roomLayouts(state.rooms);
   const hullStyle = hullFrameStyle(roomLayout);
   const doors = roomDoorLayouts(state.doors);
@@ -118,13 +129,12 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
   const voteActive = state.status === 'mapVote' || state.status === 'upgradeVote' || state.status === 'eventVote' || state.status === 'layoutVote';
   const secondsLeft = Math.max(0, Math.ceil((state.voteDeadlineTick - state.tick) * TICK_SECONDS));
   const captain = players[state.captainSeat % Math.max(1, players.length)];
-  const audio = useShipAudio(state);
-  const lastMoveAt = useRef(0);
   const systems = Object.values(state.systems);
   const poweredSystems = systems.filter((system) => system.id !== 'reactor');
   const allocatedPower = poweredSystems.reduce((total, system) => total + system.power, 0);
   const isEngineeringOperator = state.systems.reactor?.operatorCrewId === me.id && me.roomId === state.systems.reactor?.roomId;
   const isWeaponsOperator = state.systems.weapons?.operatorCrewId === me.id && me.roomId === state.systems.weapons?.roomId;
+  const isBridgeOperator = state.systems.helm?.operatorCrewId === me.id && me.roomId === state.systems.helm?.roomId;
   const weaponReady = state.weaponChargeTicks >= state.weaponChargeMaxTicks;
   const lowOxygenRooms = Object.values(state.rooms).filter((room) => room.oxygen <= 35);
   const breachedRooms = Object.values(state.rooms).filter((room) => room.breached);
@@ -148,27 +158,34 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
         ? `Extinguish ${extinguishableFires[0].size} fire`
         : currentRoom?.breached
           ? 'Seal hull breach'
-          : isWeaponsOperator && weaponReady
-            ? `Fire ${WEAPON_TARGET_COPY[state.weaponTarget]}`
-            : currentSystem && currentSystem.health < currentSystem.maxHealth
-              ? `Repair ${SYSTEM_COPY[currentSystem.id]}`
-              : currentSystem && currentSystem.operatorCrewId !== me.id
-                ? `Operate ${SYSTEM_COPY[currentSystem.id]}`
-                : 'Hold station';
+            : isWeaponsOperator && weaponReady
+              ? `Fire ${WEAPON_TARGET_COPY[state.weaponTarget]}`
+              : currentSystem && currentSystem.health < currentSystem.maxHealth
+                ? `Repair ${SYSTEM_COPY[currentSystem.id]}`
+                : currentRoom && (currentRoom.integrity < currentRoom.maxIntegrity || currentRoom.destroyed)
+                  ? `Repair ${currentLayout?.name ?? me.roomId}`
+                  : me.roomId === 'medbay' && me.health < me.maxHealth
+                    ? 'Heal in medbay'
+                    : currentSystem && currentSystem.operatorCrewId !== me.id
+                      ? `Operate ${SYSTEM_COPY[currentSystem.id]}`
+                      : 'Hold station';
   const performContextAction = () => {
-    if(me.roomId === 'medbay' && me.health < me.maxHealth){onCommand({kind:'heal',crewId:me.id});return;}
     const boarder=boardersHere[0]; if(boarder){onCommand({kind:'attackBoarder',crewId:me.id,boarderId:boarder.id});return;}
     const downed=downedHere[0]; if(downed){onCommand({kind:'revive',crewId:me.id,targetCrewId:downed.id});return;}
     const fire=extinguishableFires[0]; if(fire){onCommand({kind:'extinguish',crewId:me.id,fireId:fire.id});return;}
     if(currentRoom?.breached){onCommand({kind:'sealBreach',crewId:me.id});return;}
     if(isWeaponsOperator && weaponReady){onCommand({kind:'fireWeapon',crewId:me.id});return;}
     if(currentSystem&&currentSystem.health<currentSystem.maxHealth){onCommand({kind:'repair',crewId:me.id,systemId:currentSystem.id});return;}
+    if(currentRoom&&(currentRoom.integrity<currentRoom.maxIntegrity||currentRoom.destroyed)){onCommand({kind:'repairRoom',crewId:me.id});return;}
+    if(me.roomId === 'medbay' && me.health < me.maxHealth){onCommand({kind:'heal',crewId:me.id});return;}
     if(currentSystem)onCommand({kind:'operate',crewId:me.id,systemId:currentSystem.id});
   };
   const performRepairAction = () => {
-    if(!busy && currentSystem && currentSystem.health < currentSystem.maxHealth) onCommand({kind:'repair',crewId:me.id,systemId:currentSystem.id});
+    if (busy) return;
+    if(currentSystem && currentSystem.health < currentSystem.maxHealth) onCommand({kind:'repair',crewId:me.id,systemId:currentSystem.id});
+    else if(currentRoom && (currentRoom.integrity < currentRoom.maxIntegrity || currentRoom.destroyed)) onCommand({kind:'repairRoom',crewId:me.id});
   };
-  useEffect(()=>{const handler=(event:KeyboardEvent)=>{if(state.status!=='encounter'||event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)return;const vectors:Record<string,[-1|0|1,-1|0|1]>={w:[0,-1],a:[-1,0],s:[0,1],d:[1,0]};const vector=vectors[event.key.toLowerCase()];if(vector){event.preventDefault();const now=Date.now();if(now-lastMoveAt.current<340)return;lastMoveAt.current=now;onCommand({kind:'moveVector',crewId:me.id,dx:vector[0],dy:vector[1]});}else if(event.key.toLowerCase()==='f'){event.preventDefault();performContextAction();}else if(event.key.toLowerCase()==='r'){event.preventDefault();performRepairAction();}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);});
+  keyHandlerRef.current=(event:KeyboardEvent)=>{if(state.status!=='encounter'||event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement)return;const vectors:Record<string,[-1|0|1,-1|0|1]>={w:[0,-1],a:[-1,0],s:[0,1],d:[1,0]};const vector=vectors[event.key.toLowerCase()];if(vector){event.preventDefault();const now=Date.now();if(now-lastMoveAt.current<340)return;lastMoveAt.current=now;onCommand({kind:'moveVector',crewId:me.id,dx:vector[0],dy:vector[1]});}else if(event.key.toLowerCase()==='f'){event.preventDefault();performContextAction();}else if(event.key.toLowerCase()==='r'){event.preventDefault();performRepairAction();}};
 
   return <main className="ship-shell">
     {incomingCue !== null && <div key={`incoming-${incomingCue}`} className="weapon-bolt incoming-bolt"><i /><span /></div>}
@@ -199,12 +216,16 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
       {doors.map((door) => {
         const stateDoor = state.doors[door.id];
         const doorStatus = stateDoor?.state ?? 'closed';
-        return <span
+        const touchesCrewRoom = stateDoor?.roomA === me.roomId || stateDoor?.roomB === me.roomId;
+        const canControl = !busy && !!stateDoor && (isBridgeOperator || (stateDoor.kind === 'interior' && stateDoor.state === 'closed' && touchesCrewRoom));
+        const nextDoorState = isBridgeOperator && stateDoor?.state === 'open' ? 'closed' : 'open';
+        return <button
           key={door.id}
           className={`ship-door ${door.orientation} ${doorStatus}`}
           style={{ left: `${door.x / DECK_COLUMNS * 100}%`, top: `${door.y / DECK_ROWS * 100}%` }}
-          role="img"
-          aria-label={`${stateDoor?.roomA ?? 'Room'} to ${stateDoor?.roomB || 'hull'} door: ${doorStatus}`}
+          disabled={!canControl}
+          onClick={() => stateDoor && onCommand({ kind: 'setDoorState', crewId: me.id, doorId: stateDoor.id, state: nextDoorState })}
+          aria-label={`${stateDoor?.roomA ?? 'Room'} to ${stateDoor?.roomB || 'hull'} door: ${doorStatus}${canControl ? `. Activate to ${nextDoorState}` : ''}`}
         />;
       })}
       {Object.entries(roomLayout).map(([id, layout]) => {
@@ -212,7 +233,7 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
         const roomFires = Object.values(state.fires).filter((fire) => fire.roomId === id);
         const system = layout.systemId ? state.systems[layout.systemId] : undefined;
         const operator = system?.operatorCrewId ? state.crew[system.operatorCrewId] : undefined;
-        const selectable = reachable.has(id) && !room?.destroyed && !busy; const active = me.roomId === id;
+        const selectable = reachable.has(id) && !busy; const active = me.roomId === id;
         return <button key={id} className={`ship-room room-${id} ${active ? 'active' : ''} ${selectable ? 'reachable' : ''} ${roomFires.length > 0 ? 'on-fire' : ''} ${(room?.oxygen ?? 0) <= 35 ? 'low-oxygen' : ''} ${system && system.health < system.maxHealth ? 'system-damaged' : ''} ${room?.destroyed ? 'destroyed' : ''}`} style={{ gridColumn: `${layout.x + 1} / span ${layout.w}`, gridRow: `${layout.y + 1} / span ${layout.h}` }} disabled={!selectable} onClick={() => onCommand({ kind: 'move', crewId: me.id, roomId: id })}>
           <span className="room-name">{layout.name}</span><span className="oxygen">O₂ {Math.round(room?.oxygen ?? 0)}%</span>
           <span className="integrity">HP {room?.integrity ?? 0}/{room?.maxIntegrity ?? 0}</span>
@@ -258,7 +279,7 @@ export function ShipScreen({ state, myCrewId, mySessionId, players, error, onCom
     <aside className="crew-panel"><p className="eyebrow">YOUR CREW</p><h2>{me.name}</h2><strong>{me.role}</strong><div className="health-bar"><span style={{ width: `${(me.health / me.maxHealth) * 100}%` }} /></div><small>{me.health} health · room: {currentLayout?.name ?? me.roomId}</small>
       <button className="priority-action" disabled={busy || priorityAction === 'Hold station'} onClick={performContextAction}><span>CONTEXT ACTION · F</span><b>{priorityAction}</b></button>
       {isWeaponsOperator && <div className="weapon-control"><span><b>PULSE LASER</b><small>Target: {WEAPON_TARGET_COPY[state.weaponTarget]} · auto-fires when charged</small></span><div className="player-weapon-meter"><i style={{ width: `${state.weaponChargeMaxTicks > 0 ? state.weaponChargeTicks / state.weaponChargeMaxTicks * 100 : 0}%` }} /></div><button className="fire-weapon" disabled={!weaponReady} onClick={() => onCommand({ kind: 'fireWeapon', crewId: me.id })}>{weaponReady ? `FIRE ${WEAPON_TARGET_COPY[state.weaponTarget].toUpperCase()} NOW (GUARANTEED)` : `CHARGING ${state.weaponChargeTicks}/${state.weaponChargeMaxTicks}`}</button></div>}
-      <div className={`actions ${busy ? 'busy' : ''}`}><button className="ability" disabled={busy || me.abilityCooldownTicks > 0} onClick={() => onCommand({ kind:'useAbility', crewId:me.id })}>{ABILITY_COPY[me.role]} {me.abilityCooldownTicks > 0 ? `(${Math.ceil(me.abilityCooldownTicks * TICK_SECONDS)}s)` : ''}</button>{me.roomId === 'medbay' && me.health < me.maxHealth && <button onClick={() => onCommand({kind:'heal', crewId:me.id})}>Heal ({medbayHealAmount} HP)</button>}{currentSystem && <><button onClick={() => onCommand({ kind:'operate', crewId:me.id, systemId:currentSystem.id })}>Operate {currentSystem.id}</button>{currentSystem.health < currentSystem.maxHealth && <button onClick={() => onCommand({ kind:'repair', crewId:me.id, systemId:currentSystem.id })}>Repair ({currentSystem.health}/{currentSystem.maxHealth})</button>}</>}{firesHere.map((fire) => <button key={fire.id} disabled={!extinguishableFires.some((candidate) => candidate.id === fire.id)} onClick={() => onCommand({kind:'extinguish', crewId:me.id,fireId:fire.id})}>Extinguish {fire.size} fire</button>)}{currentRoom?.breached && <button onClick={() => onCommand({kind:'sealBreach',crewId:me.id})}>Seal breach</button>}{boardersHere.map((boarder) => <button className="danger" key={boarder.id} onClick={() => onCommand({kind:'attackBoarder',crewId:me.id,boarderId:boarder.id})}>Fight boarder ({boarder.health})</button>)}{downedHere.map((crew) => <button key={crew.id} onClick={() => onCommand({kind:'revive',crewId:me.id,targetCrewId:crew.id})}>Revive {crew.name}</button>)}</div>
+      <div className={`actions ${busy ? 'busy' : ''}`}><button className="ability" disabled={busy || me.abilityCooldownTicks > 0} onClick={() => onCommand({ kind:'useAbility', crewId:me.id })}>{ABILITY_COPY[me.role]} {me.abilityCooldownTicks > 0 ? `(${Math.ceil(me.abilityCooldownTicks * TICK_SECONDS)}s)` : ''}</button>{me.roomId === 'medbay' && me.health < me.maxHealth && <button onClick={() => onCommand({kind:'heal', crewId:me.id})}>Heal ({medbayHealAmount} HP)</button>}{currentSystem && <><button onClick={() => onCommand({ kind:'operate', crewId:me.id, systemId:currentSystem.id })}>Operate {currentSystem.id}</button>{currentSystem.health < currentSystem.maxHealth && <button onClick={() => onCommand({ kind:'repair', crewId:me.id, systemId:currentSystem.id })}>Repair system ({currentSystem.health}/{currentSystem.maxHealth})</button>}</>}{currentRoom && (currentRoom.integrity < currentRoom.maxIntegrity || currentRoom.destroyed) && <button onClick={() => onCommand({kind:'repairRoom',crewId:me.id})}>Repair room ({currentRoom.integrity}/{currentRoom.maxIntegrity})</button>}{firesHere.map((fire) => <button key={fire.id} disabled={!extinguishableFires.some((candidate) => candidate.id === fire.id)} onClick={() => onCommand({kind:'extinguish',crewId:me.id,fireId:fire.id})}>Extinguish {fire.size} fire</button>)}{currentRoom?.breached && <button onClick={() => onCommand({kind:'sealBreach',crewId:me.id})}>Seal breach</button>}{boardersHere.map((boarder) => <button className="danger" key={boarder.id} onClick={() => onCommand({kind:'attackBoarder',crewId:me.id,boarderId:boarder.id})}>Fight boarder ({boarder.health})</button>)}{downedHere.map((crew) => <button key={crew.id} onClick={() => onCommand({kind:'revive',crewId:me.id,targetCrewId:crew.id})}>Revive {crew.name}</button>)}</div>
       {error && <p className="error">{error}</p>}
     </aside>
     <footer className="crew-strip">{Object.values(state.crew).map((crew) => <div key={crew.id} className={crew.id === me.id ? 'mine' : ''}><i className={crew.role}>{crew.name.slice(0,1)}</i><span><b>{crew.name}</b><small>{crew.role} · {crew.roomId}</small></span><em className={crew.incapacitated ? 'bleedout' : ''}>{crew.incapacitated ? `DOWN · ${Math.max(0, Math.ceil(crew.bleedoutTicks * TICK_SECONDS))}s` : crew.health}</em></div>)}</footer>
